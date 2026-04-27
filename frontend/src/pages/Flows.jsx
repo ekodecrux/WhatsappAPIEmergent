@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../lib/api';
-import { Plus, Trash2, Power, Play, Edit, Sparkles, Workflow, Banknote, GraduationCap, Target, LifeBuoy, FileText, QrCode, BarChart3, X, Download, Copy } from 'lucide-react';
+import { Plus, Trash2, Power, Play, Edit, Sparkles, Workflow, Banknote, GraduationCap, Target, LifeBuoy, FileText, QrCode, BarChart3, X, Download, Copy, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const TPL_ICONS = {
@@ -24,6 +24,9 @@ export default function Flows() {
   const [creds, setCreds] = useState([]);
   const [qr, setQr] = useState(null);
   const [analytics, setAnalytics] = useState(null);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiDesc, setAiDesc] = useState('');
+  const [aiBusy, setAiBusy] = useState(false);
 
   const load = async () => {
     const [f, t, c] = await Promise.all([
@@ -45,6 +48,25 @@ export default function Flows() {
   };
 
   const blank = () => fromTemplate({ id: 'blank', name: 'Blank flow' });
+
+  const aiCreate = async () => {
+    if (!aiDesc.trim() || aiDesc.trim().length < 8) {
+      toast.error('Describe what your bot should do (at least 8 chars)');
+      return;
+    }
+    if (!creds[0]) { toast.error('Connect a WhatsApp credential first'); return; }
+    setAiBusy(true);
+    try {
+      const { data: blankFlow } = await api.post('/flows/from-template/blank', { credential_id: creds[0].id });
+      const { data: applied } = await api.post(`/flows/${blankFlow.id}/ai-scaffold`, { description: aiDesc });
+      toast.success('Flow generated — opening builder');
+      setAiOpen(false);
+      setAiDesc('');
+      navigate(`/app/flows/${blankFlow.id}`);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'AI generation failed');
+    } finally { setAiBusy(false); }
+  };
 
   const togglePublish = async (f) => {
     try {
@@ -97,9 +119,14 @@ export default function Flows() {
           <h1 className="font-display text-3xl font-semibold tracking-tight">Chatbot Flows</h1>
           <p className="mt-1 text-sm text-zinc-600">Visual mind-map builder. Drag, connect, publish.</p>
         </div>
-        <button data-testid="new-flow" onClick={blank} className="inline-flex items-center gap-1.5 rounded-md bg-wa-dark px-3.5 py-2 text-sm font-medium text-white hover:bg-wa-mid">
-          <Plus className="h-4 w-4" /> Blank flow
-        </button>
+        <div className="flex items-center gap-2">
+          <button data-testid="ai-flow" onClick={() => setAiOpen(true)} className="inline-flex items-center gap-1.5 rounded-md border border-wa-light/40 bg-gradient-to-r from-wa-dark to-wa-mid px-3.5 py-2 text-sm font-medium text-white hover:opacity-90">
+            <Wand2 className="h-4 w-4" /> Generate flow
+          </button>
+          <button data-testid="new-flow" onClick={blank} className="inline-flex items-center gap-1.5 rounded-md border border-zinc-300 bg-white px-3.5 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50">
+            <Plus className="h-4 w-4" /> Blank flow
+          </button>
+        </div>
       </div>
 
       {/* Templates gallery */}
@@ -182,6 +209,49 @@ export default function Flows() {
           ))}
         </div>
       </section>
+
+      {/* AI generator modal */}
+      {aiOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-md border border-zinc-200 bg-white p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="inline-flex items-center gap-2 font-display text-lg font-semibold">
+                <Wand2 className="h-4 w-4 text-wa-dark" /> Generate flow
+              </h3>
+              <button onClick={() => setAiOpen(false)}><X className="h-4 w-4" /></button>
+            </div>
+            <p className="text-xs text-zinc-600">Describe your bot in plain English. We'll design a 4-8 node flow you can edit visually right after.</p>
+            <textarea
+              data-testid="ai-flow-desc"
+              rows={4}
+              value={aiDesc}
+              onChange={(e) => setAiDesc(e.target.value)}
+              placeholder="e.g. School admission inquiry — capture child's name, grade, parent contact, send confirmation"
+              className="mt-3 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-wa-light focus:ring-2 focus:ring-wa-light/20"
+            />
+            <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+              {[
+                'Restaurant table reservation',
+                'Loan application qualifier',
+                'Property site-visit booking',
+                'IT support ticket triage',
+                'Doctor appointment booking',
+                'School admission inquiry',
+              ].map(s => (
+                <button key={s} onClick={() => setAiDesc(s)} className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 hover:bg-zinc-100">{s}</button>
+              ))}
+            </div>
+            <button
+              data-testid="ai-flow-generate"
+              onClick={aiCreate}
+              disabled={aiBusy}
+              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md bg-gradient-to-r from-wa-dark to-wa-mid px-3 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
+            >
+              {aiBusy ? <>Designing flow… <Sparkles className="h-3.5 w-3.5 animate-pulse" /></> : <>Generate &amp; open builder <Wand2 className="h-3.5 w-3.5" /></>}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* QR modal */}
       {qr && (

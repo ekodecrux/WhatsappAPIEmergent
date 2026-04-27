@@ -5,8 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from server import db
 from models import uid, now
-from helpers import get_current_user, audit_log
+from helpers import get_current_user, audit_log, run_sync
 from flow_engine import trigger_or_continue
+from flow_ai import generate_scaffold
 
 
 router = APIRouter(prefix="/flows", tags=["flows"])
@@ -125,6 +126,61 @@ async def list_templates(current=Depends(get_current_user)):
         {"id": k, "name": v["name"], "description": v["description"], "category": v["category"]}
         for k, v in TEMPLATES.items()
     ]
+
+
+# ============ AI scaffold ============
+@router.post("/ai-scaffold")
+async def ai_scaffold(body: dict, current=Depends(get_current_user)):
+    """Generate a flow scaffold from a natural language description.
+
+    Body: { description: str, triggers?: list[str] }
+    Returns: { name, nodes, edges } in our flow schema (not persisted).
+    """
+    desc = (body.get("description") or "").strip()
+    if not desc or len(desc) < 4:
+        raise HTTPException(400, "Description is too short")
+    triggers = body.get("triggers") or []
+    try:
+        scaffold = await run_sync(generate_scaffold, desc, triggers)
+    except Exception as e:
+        raise HTTPException(500, f"AI generation failed: {e}")
+    await audit_log(current["tenant_id"], current["id"], "ai_scaffold_generate", "", {"description": desc[:120]})
+    return scaffold
+
+
+@router.post("/{fid}/ai-scaffold")
+async def ai_scaffold_apply(fid: str, body: dict, current=Depends(get_current_user)):
+    """Generate AND apply scaffold to an existing draft flow.
+
+    Body: { description: str, triggers?: list[str], replace?: bool }
+    """
+    f = await db.flows.find_one({"id": fid, "tenant_id": current["tenant_id"]}, {"_id": 0})
+    if not f:
+        raise HTTPException(404, "Not found")
+    if f.get("status") == "active":
+        raise HTTPException(400, "Unpublish before generating a new scaffold")
+
+    desc = (body.get("description") or "").strip()
+    if not desc or len(desc) < 4:
+        raise HTTPException(400, "Description is too short")
+    triggers = body.get("triggers") or (f.get("triggers", [{}])[0].get("keywords") if f.get("triggers") else [])
+
+    try:
+        scaffold = await run_sync(generate_scaffold, desc, triggers)
+    except Exception as e:
+        raise HTTPException(500, f"AI generation failed: {e}")
+
+    start = next((n for n in scaffold["nodes"] if n["type"] == "start"), scaffold["nodes"][0])
+    update = {
+        "name": scaffold.get("name") or f["name"],
+        "nodes": scaffold["nodes"],
+        "edges": scaffold["edges"],
+        "start_node_id": start["id"],
+        "updated_at": now().isoformat(),
+    }
+    await db.flows.update_one({"id": fid}, {"$set": update})
+    await audit_log(current["tenant_id"], current["id"], "ai_scaffold_apply", fid, {"description": desc[:120]})
+    return {"applied": True, **update}
 
 
 @router.post("/from-template/{template_id}")

@@ -96,14 +96,13 @@ export default function Landing() {
         <div className="bg-radial-fade absolute inset-0 -z-10" />
         <div className="mx-auto max-w-7xl px-6 pt-24 pb-20 md:pt-32">
           <div className="flex flex-col items-start gap-6">
-            <Pill>Live on WhatsApp Business Cloud &amp; Twilio</Pill>
+            <Pill>Workflow-first · WhatsApp marketing reimagined</Pill>
             <h1 className="font-display text-5xl font-semibold leading-[1.05] tracking-tighter text-zinc-900 sm:text-6xl lg:text-7xl">
-              The WhatsApp control room <br className="hidden md:block" />
-              for <span className="text-wa-dark">modern revenue teams</span>
+              The world's first <span className="text-wa-dark">all-in-one</span> <br className="hidden md:block" />
+              WhatsApp workflow platform
             </h1>
             <p className="max-w-2xl text-lg leading-relaxed text-zinc-600">
-              Connect your own WhatsApp Business credentials, run bulk campaigns with built-in approval flow,
-              chat in real time, and plug into any ERP via webhooks &amp; API keys. Built for teams who refuse to be spammers.
+              Bulk campaigns, visual chatbot builder, lead-gen funnels, real-time inbox and ERP integrations — orchestrated as one workflow. Connect your own WhatsApp credentials and ship a complete go-to-market motion in an afternoon.
             </p>
             <div className="flex flex-wrap items-center gap-3">
               <Link
@@ -182,12 +181,12 @@ export default function Landing() {
               </div>
               <div className="col-span-12 border-t border-zinc-200 lg:col-span-3 lg:border-t-0 lg:border-l">
                 <div className="border-b border-zinc-200 p-5">
-                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-wa-dark">AI Co-pilot</div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-wa-dark">Workflow Co-pilot</div>
                 </div>
                 <div className="space-y-3 p-5">
                   <div className="rounded-md border border-zinc-200 p-3 text-xs leading-relaxed text-zinc-700">
                     <div className="mb-1 flex items-center gap-1.5 font-medium text-zinc-900">
-                      <Sparkles className="h-3.5 w-3.5 text-wa-dark" /> Suggested reply
+                      <Sparkles className="h-3.5 w-3.5 text-wa-dark" /> Smart reply
                     </div>
                     Sharing the calendar link now. Looking forward to walking you through the bulk campaign workflow.
                   </div>
@@ -218,13 +217,13 @@ export default function Landing() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <Feature icon={ShieldCheck} title="Bring your own credentials" desc="Connect your Twilio or Meta WhatsApp Business account. Tokens are encrypted with AES-256 — never logged." />
             <Feature icon={Zap} title="Bulk with guardrails" desc="Send to thousands with built-in rate limiting, opt-in checks and a human-in-the-loop approval gate." />
-            <Feature icon={Bot} title="AI co-pilot" desc="Llama-3.3 powered reply suggestions, sentiment analysis and lead scoring. No additional setup." />
+            <Feature icon={Bot} title="Visual chatbot builder" desc="Drag-and-drop mind-map designer. Send, ask, choice, branch and condition nodes — published in minutes." />
             <Feature icon={MessageSquare} title="Real-time inbox" desc="A 3-pane chat console for your sales & support team. WhatsApp-style bubbles, blazing fast." />
             <Feature icon={Database} title="Lead CRM" desc="Capture, score and convert leads. Bulk import, filters, custom fields and assignment in one place." />
             <Feature icon={Workflow} title="ERP integrations" desc="Trigger campaigns from your ERP via signed API keys & webhooks. Bidirectional & idempotent." />
             <Feature icon={Users} title="Team & roles" desc="Invite teammates, assign conversations, and audit every action with detailed activity logs." />
-            <Feature icon={BarChart3} title="Analytics" desc="Volume, delivery & engagement charts that update in real time. Export anytime." />
-            <Feature icon={Globe} title="Multi-tenant ready" desc="Scoped data per tenant, plan limits and per-tenant rate budgets out of the box." />
+            <Feature icon={BarChart3} title="Analytics" desc="Volume, delivery & engagement charts that update in real time. Per-flow drop-off too." />
+            <Feature icon={Globe} title="QR-deploy any flow" desc="Print a QR on your storefront, ATM or packaging — scanning auto-launches your bot on WhatsApp." />
           </div>
         </div>
       </section>

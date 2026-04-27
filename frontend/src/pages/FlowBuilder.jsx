@@ -5,7 +5,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import api from '../lib/api';
-import { ArrowLeft, Plus, Save, Power, Send, Trash2, Settings, Play, MessageCircle, HelpCircle, GitBranch, Globe, ScanLine, X, Sparkles, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Plus, Save, Power, Send, Trash2, Settings, Play, MessageCircle, HelpCircle, GitBranch, Globe, ScanLine, X, Sparkles, ChevronRight, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const TYPE_META = {
@@ -81,6 +81,10 @@ export default function FlowBuilder() {
   const [testOpen, setTestOpen] = useState(false);
   const [testPhone, setTestPhone] = useState('+919999000001');
   const [testMsg, setTestMsg] = useState('hi');
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiDesc, setAiDesc] = useState('');
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiPreview, setAiPreview] = useState(null);
 
   const load = useCallback(async () => {
     const [f, c] = await Promise.all([
@@ -182,6 +186,41 @@ export default function FlowBuilder() {
     } catch (e) { toast.error(e?.response?.data?.detail || 'Failed'); }
   };
 
+  const aiGenerate = async () => {
+    if (!aiDesc.trim() || aiDesc.trim().length < 8) {
+      toast.error('Please describe what the bot should do (at least 8 chars)');
+      return;
+    }
+    setAiBusy(true);
+    try {
+      const triggers = flow.triggers?.[0]?.keywords || [];
+      const { data } = await api.post('/flows/ai-scaffold', { description: aiDesc, triggers });
+      setAiPreview(data);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'AI generation failed');
+    } finally { setAiBusy(false); }
+  };
+
+  const aiApply = () => {
+    if (!aiPreview) return;
+    const newNodes = aiPreview.nodes.map(n => ({
+      id: n.id, type: n.type, position: n.position || { x: 0, y: 0 }, data: n.data || {},
+    }));
+    const newEdges = aiPreview.edges.map(e => ({
+      id: e.id, source: e.source, target: e.target, label: e.label,
+      animated: true, type: 'smoothstep',
+      markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 },
+      style: { stroke: '#075E54' },
+    }));
+    setNodes(newNodes);
+    setEdges(newEdges);
+    setFlow(f => ({ ...f, name: aiPreview.name || f.name }));
+    setAiOpen(false);
+    setAiPreview(null);
+    setAiDesc('');
+    toast.success('Scaffold applied — review and Save');
+  };
+
   if (!flow) return <div className="p-8 text-sm text-zinc-500">Loading…</div>;
 
   return (
@@ -208,6 +247,9 @@ export default function FlowBuilder() {
             <option value="">— pick WA connection —</option>
             {creds.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
+          <button data-testid="flow-ai" onClick={() => setAiOpen(true)} className="inline-flex items-center gap-1 rounded-md border border-wa-light/40 bg-gradient-to-r from-wa-dark to-wa-mid px-2.5 py-1.5 text-xs font-medium text-white hover:opacity-90">
+            <Wand2 className="h-3 w-3" /> Smart scaffold
+          </button>
           <button data-testid="flow-test" onClick={() => setTestOpen(true)} className="inline-flex items-center gap-1 rounded-md border border-zinc-300 bg-white px-2.5 py-1.5 text-xs font-medium hover:bg-zinc-50">
             <Send className="h-3 w-3" /> Test
           </button>
@@ -473,6 +515,82 @@ export default function FlowBuilder() {
               <button data-testid="test-run" onClick={test} className="inline-flex w-full items-center justify-center gap-1 rounded-md bg-wa-dark px-3 py-2 text-sm font-medium text-white hover:bg-wa-mid">
                 Run test <ChevronRight className="h-3.5 w-3.5" />
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {aiOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-2xl rounded-md border border-zinc-200 bg-white p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="inline-flex items-center gap-2 font-display text-lg font-semibold">
+                <Wand2 className="h-4 w-4 text-wa-mid" /> AI scaffold generator
+              </h3>
+              <button onClick={() => { setAiOpen(false); setAiPreview(null); }}><X className="h-4 w-4" /></button>
+            </div>
+            <p className="text-xs text-zinc-600">Describe what the bot should do. AI will design a 4-8 node flow you can review and apply.</p>
+            <div className="mt-4 space-y-3">
+              <textarea
+                data-testid="ai-desc"
+                rows={4}
+                value={aiDesc}
+                onChange={(e) => setAiDesc(e.target.value)}
+                placeholder="e.g. Insurance renewal — verify policy number, confirm renewal, capture payment method, send receipt"
+                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-wa-light focus:ring-2 focus:ring-wa-light/20"
+              />
+              <div className="flex flex-wrap gap-1.5 text-[11px]">
+                {[
+                  'Loan application qualifier',
+                  'Restaurant table reservation',
+                  'Property site-visit booking',
+                  'IT support ticket triage',
+                  'Insurance claim status check',
+                ].map(s => (
+                  <button key={s} onClick={() => setAiDesc(s)} className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 hover:bg-zinc-100">{s}</button>
+                ))}
+              </div>
+              {!aiPreview && (
+                <button
+                  data-testid="ai-generate"
+                  onClick={aiGenerate}
+                  disabled={aiBusy}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-gradient-to-r from-wa-dark to-wa-mid px-3 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
+                >
+                  {aiBusy ? <>Designing flow… <Sparkles className="h-3.5 w-3.5 animate-pulse" /></> : <>Generate <Wand2 className="h-3.5 w-3.5" /></>}
+                </button>
+              )}
+              {aiPreview && (
+                <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Preview</div>
+                      <div className="font-display text-sm font-semibold">{aiPreview.name}</div>
+                    </div>
+                    <span className="text-[11px] text-zinc-500">{aiPreview.nodes.length} nodes · {aiPreview.edges.length} edges</span>
+                  </div>
+                  <div className="max-h-56 space-y-1 overflow-y-auto text-xs">
+                    {aiPreview.nodes.map((n, i) => {
+                      const label = n.data?.message || n.data?.prompt || n.data?.label || n.type;
+                      return (
+                        <div key={n.id} className="flex items-start gap-2 rounded bg-white px-2 py-1.5 ring-1 ring-zinc-200">
+                          <span className="mt-0.5 inline-flex w-12 shrink-0 justify-center rounded bg-zinc-100 px-1 py-0.5 font-mono text-[10px] capitalize text-zinc-700">{n.type}</span>
+                          <span className="line-clamp-2 text-zinc-700">{label}</span>
+                          {n.data?.options && (
+                            <span className="ml-auto shrink-0 text-[10px] text-zinc-400">{n.data.options.length} opts</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-3 flex items-center justify-end gap-2">
+                    <button onClick={() => { setAiPreview(null); }} className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium hover:bg-zinc-50">Regenerate</button>
+                    <button data-testid="ai-apply" onClick={aiApply} className="inline-flex items-center gap-1 rounded-md bg-wa-dark px-3 py-1.5 text-xs font-medium text-white hover:bg-wa-mid">
+                      Apply <ChevronRight className="h-3 w-3" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

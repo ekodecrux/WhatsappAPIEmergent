@@ -218,14 +218,14 @@ export default function Chat() {
       {/* AI / Context */}
       <aside className="col-span-12 hidden flex-col bg-white lg:col-span-3 lg:flex">
         <div className="border-b border-zinc-200 p-4">
-          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-wa-dark">AI Co-pilot</div>
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-wa-dark">Workflow Co-pilot</div>
         </div>
         <div className="flex-1 overflow-y-auto p-4 text-sm">
           {active ? (
             <>
               <div className="rounded-md border border-zinc-200 p-3">
                 <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-zinc-900">
-                  <Sparkles className="h-3.5 w-3.5 text-wa-dark" /> Suggested reply
+                  <Sparkles className="h-3.5 w-3.5 text-wa-dark" /> Smart reply
                 </div>
                 <div className="text-xs leading-relaxed text-zinc-700">{suggestion || '—'}</div>
                 <button data-testid="use-suggestion" onClick={useSuggestion} disabled={!suggestion} className="mt-3 w-full rounded-md border border-zinc-300 bg-white py-1.5 text-xs font-medium hover:bg-zinc-50 disabled:opacity-50">
