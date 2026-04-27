@@ -502,7 +502,10 @@ async def translate_flow(fid: str, body: dict, current=Depends(get_current_user)
     try:
         translated = await run_sync(translate_flow_strings, strings, target)
     except Exception as e:
-        raise HTTPException(500, f"Translation failed: {e}")
+        msg = str(e)
+        if "429" in msg or "rate" in msg.lower() or "quota" in msg.lower():
+            raise HTTPException(503, "Translation service is busy — try again in a moment")
+        raise HTTPException(500, "Translation failed — please try again or contact support")
 
     translations = f.get("translations") or {}
     translations[target] = translated
