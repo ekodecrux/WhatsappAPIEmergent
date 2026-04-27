@@ -1,0 +1,120 @@
+{
+  "theme": "light",
+  "archetype": "Archetype 4: Swiss & High-Contrast (Modern B2B Tech / Vercel Style)",
+  "vibe": "Professional, precise, highly performant, trustworthy. No violet or teal gradients. Emphasizes clean lines, dense data displays, and a nod to WhatsApp branding through crisp green accents.",
+  "colors": {
+    "background": "#FFFFFF",
+    "surface": "#F9FAFB",
+    "surface_hover": "#F3F4F6",
+    "border": "#E5E7EB",
+    "border_focus": "#16A34A",
+    "text_primary": "#0A0A0A",
+    "text_secondary": "#52525B",
+    "text_muted": "#A1A1AA",
+    "brand_primary": "#16A34A",
+    "brand_hover": "#15803D",
+    "brand_foreground": "#FFFFFF",
+    "destructive": "#EF4444",
+    "destructive_foreground": "#FFFFFF",
+    "success": "#22C55E",
+    "warning": "#EAB308",
+    "overlay": "rgba(0, 0, 0, 0.4)"
+  },
+  "typography": {
+    "fonts": {
+      "headings": "'Outfit', sans-serif",
+      "body": "'Inter', sans-serif",
+      "mono": "'JetBrains Mono', monospace"
+    },
+    "hierarchy": {
+      "h1": "text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tighter leading-tight",
+      "h2": "text-2xl sm:text-3xl lg:text-4xl font-semibold tracking-tight",
+      "h3": "text-xl sm:text-2xl font-medium tracking-tight",
+      "h4": "text-lg sm:text-xl font-medium",
+      "body": "text-base leading-relaxed text-slate-600",
+      "small": "text-sm text-slate-500",
+      "overline": "text-xs font-bold uppercase tracking-[0.2em] text-green-600"
+    }
+  },
+  "spacing_and_layout": {
+    "marketing_page": {
+      "container_padding": "py-24 px-6 md:px-12",
+      "grid_gap": "gap-12",
+      "layout_style": "Bento Grid (Asymmetric, generous negative space)",
+      "hero_margin": "mt-32 mb-24"
+    },
+    "dashboard": {
+      "container_padding": "p-6",
+      "grid_gap": "gap-4 or gap-6",
+      "layout_style": "Control Room Grid (Dense, rigid, highly functional)",
+      "sidebar_width": "w-64"
+    }
+  },
+  "visual_enhancers": {
+    "borders": "1px solid #E5E7EB on almost all structural elements to create a blueprint/technical feel. Avoid heavy drop shadows.",
+    "shadows": {
+      "ambient": "shadow-sm (0 1px 2px 0 rgba(0, 0, 0, 0.05))",
+      "elevated": "shadow-md (0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06))",
+      "modal": "shadow-xl"
+    },
+    "radius": "rounded-md (6px) or rounded-sm (4px) to maintain a sharp, technical aesthetic. Avoid pill shapes or heavily rounded cards.",
+    "background_textures": "Use subtle blueprint grids for marketing sections: bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]",
+    "glassmorphism": "Only for sticky headers or floating toolbars: backdrop-blur-xl bg-white/70 border-b border-gray-200."
+  },
+  "components_strategy": {
+    "buttons": "Flat design. Primary buttons use brand_primary (#16A34A). Secondary buttons use transparent background with border. No thick gradients.",
+    "inputs": "Clean 1px borders, white background. Focus state: ring-2 ring-green-500/20 border-green-500. No heavy shadows.",
+    "cards": "Flat surfaces with 1px border. On dashboard, they must snap perfectly to the grid with no irregular heights.",
+    "charts": "Recharts or Shadcn Charts. Use Line Charts for message volume, Bar Charts for delivery rates, Donut charts for message status (Sent/Delivered/Read). Use Brand Green as primary data color.",
+    "tables": "Dense rows for CRM/Leads and Campaigns. 13px or 14px font size. Sticky headers. Pagination.",
+    "chat_console": "3-pane layout. Left: Conversation list (dense, selectable). Center: Chat window with WhatsApp-style bubbles (Green for outgoing, Gray for incoming). Right: AI Suggestions and CRM data context."
+  },
+  "image_urls": [
+    {
+      "url": "https://images.unsplash.com/photo-1748346918817-0b1b6b2f9bab?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2MTJ8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBvZmZpY2UlMjB0ZWFtJTIwd29ya2luZ3xlbnwwfHx8fDE3NzcyNjA5Njl8MA&ixlib=rb-4.1.0&q=85",
+      "category": "hero_or_marketing_background",
+      "description": "Modern office team working. Use with a heavy overlay (e.g., bg-white/90) as a subtle background for the marketing hero section, or as a feature image in the 'About' or 'Enterprise' block."
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1758873268364-15bef4162221?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2MTJ8MHwxfHNlYXJjaHwzfHxtb2Rlcm4lMjBvZmZpY2UlMjB0ZWFtJTIwd29ya2luZ3xlbnwwfHx8fDE3NzcyNjA5Njl8MA&ixlib=rb-4.1.0&q=85",
+      "category": "feature_collaboration",
+      "description": "Two colleagues collaborating. Perfect for illustrating CRM team access or Live Chat features on the marketing page."
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1770777843445-2a1621b1201d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2MTJ8MHwxfHNlYXJjaHwyfHxtb2Rlcm4lMjBvZmZpY2UlMjB0ZWFtJTIwd29ya2luZ3xlbnwwfHx8fDE3NzcyNjA5Njl8MA&ixlib=rb-4.1.0&q=85",
+      "category": "team_or_support",
+      "description": "Team at desks. Good for '24/7 Support' or 'Built for scale' sections."
+    },
+    {
+      "url": "https://images.pexels.com/photos/9949426/pexels-photo-9949426.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "category": "integration_logo",
+      "description": "Apple logo. Use creatively as an integration placeholder if needed, or stick to pure CSS/Lucide icons for platforms like Shopify, Salesforce, etc."
+    }
+  ],
+  "pages_and_features": [
+    "1. Marketing Landing Page (Hero, Value Prop, Blueprint Grid Features, Pricing, Footer)",
+    "2. Auth (Login/Register/OTP via mock logic)",
+    "3. Multi-page Dashboard Shell (Sidebar, TopNav, Breadcrumbs)",
+    "4. Overview Metrics (Charts, KPIs for messages sent, delivered, read)",
+    "5. WhatsApp Setup (BYOC credentials, QR/Token entry, Connection Status)",
+    "6. Campaigns (List, Create Bulk Campaign, Audience Selection, Scheduling, Progress)",
+    "7. Leads / CRM (Data table, Filters, Lead Scoring, Tags)",
+    "8. Live Chat Console (3-pane layout, WhatsApp style bubbles, AI suggestions sidebar)",
+    "9. Auto-Reply Rules (Trigger-action builder, templates)",
+    "10. Integrations & ERP (Webhooks, API key generation, Connected Apps)",
+    "11. Subscription / Billing (Plans, Usage bars, Payment History)"
+  ],
+  "accessibility_and_testing": {
+    "contrast": "Ensure minimum 4.5:1 ratio for text. Green text/buttons on white background must be legible (use darker #15803D for text).",
+    "focus": "All interactive elements must have visible focus rings.",
+    "testing_attributes": "Add data-testid to ALL interactive elements, forms, and key metric displays (e.g., data-testid='login-button', data-testid='metric-messages-sent')."
+  },
+  "instructions_to_main_agent": [
+    "Build the complete UI with mock data to demonstrate full functionality. Ensure navigation works across all 11 defined pages/views.",
+    "Strictly adhere to the Vercel/Linear aesthetic: no border-radius above 8px, stark white backgrounds, subtle 1px gray borders, and crisp typography.",
+    "Use Phosphor or Lucide icons for high-end technical feel.",
+    "For the live chat console, accurately mimic the visual cadence of WhatsApp (green/gray bubbles) but within the crisp B2B SaaS frame.",
+    "Implement the 'blueprint grid' background pattern on the marketing page to emphasize the technical nature of the platform.",
+    "All complex data tables must use Shadcn Table component and look extremely dense and professional."
+  ]
+}
