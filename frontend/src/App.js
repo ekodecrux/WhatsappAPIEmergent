@@ -1,54 +1,57 @@
-import { useEffect } from "react";
-import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Toaster } from 'sonner';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+import Landing from './pages/Landing';
+import Login from './pages/Login';
+import Register from './pages/Register';
+import AppShell from './components/AppShell';
+import Dashboard from './pages/Dashboard';
+import WhatsAppSetup from './pages/WhatsAppSetup';
+import Campaigns from './pages/Campaigns';
+import Leads from './pages/Leads';
+import Chat from './pages/Chat';
+import AutoReplies from './pages/AutoReplies';
+import Templates from './pages/Templates';
+import Analytics from './pages/Analytics';
+import Billing from './pages/Billing';
+import Integrations from './pages/Integrations';
+import Settings from './pages/Settings';
 
-const Home = () => {
-  const helloWorldApi = async () => {
-    try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
-    }
-  };
-
-  useEffect(() => {
-    helloWorldApi();
-  }, []);
-
-  return (
-    <div>
-      <header className="App-header">
-        <a
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
-    </div>
-  );
-};
-
-function App() {
-  return (
-    <div className="App">
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
-    </div>
-  );
+function Private({ children }) {
+  const { user } = useAuth();
+  if (!user?.access_token) return <Navigate to="/login" replace />;
+  return children;
 }
 
-export default App;
+export default function App() {
+  return (
+    <AuthProvider>
+      <Toaster position="top-right" richColors />
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Landing />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+
+          <Route path="/app" element={<Private><AppShell /></Private>}>
+            <Route index element={<Dashboard />} />
+            <Route path="whatsapp" element={<WhatsAppSetup />} />
+            <Route path="campaigns" element={<Campaigns />} />
+            <Route path="leads" element={<Leads />} />
+            <Route path="chat" element={<Chat />} />
+            <Route path="auto-replies" element={<AutoReplies />} />
+            <Route path="templates" element={<Templates />} />
+            <Route path="analytics" element={<Analytics />} />
+            <Route path="billing" element={<Billing />} />
+            <Route path="integrations" element={<Integrations />} />
+            <Route path="settings" element={<Settings />} />
+          </Route>
+
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
+  );
+}
