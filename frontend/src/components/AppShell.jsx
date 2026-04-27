@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, MessageSquare, Send, Users, MessagesSquare, Bot,
-  FileText, Workflow, BarChart3, CreditCard, Plug, UserPlus, Settings as SettingsIcon, LogOut,
+  FileText, Workflow, BarChart3, CreditCard, Plug, UserPlus, BookOpen, Settings as SettingsIcon, LogOut,
   Menu, X, ChevronRight, AlertTriangle, Sparkles
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -20,6 +20,7 @@ const NAV = [
   { to: '/app/billing', label: 'Subscription', icon: CreditCard },
   { to: '/app/integrations', label: 'ERP & API', icon: Plug },
   { to: '/app/team', label: 'Team', icon: UserPlus },
+  { to: '/app/guide', label: 'User Guide', icon: BookOpen },
   { to: '/app/settings', label: 'Settings', icon: SettingsIcon },
 ];
 

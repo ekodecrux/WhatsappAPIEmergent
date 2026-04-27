@@ -1,0 +1,48 @@
+{
+  "summary": "Iteration 4 (condition node + analytics + QR + UserGuide) tested end-to-end. Added 18 new pytest cases in /app/backend/tests/test_iteration4.py — ALL 18 PASS. Full regression: 87 passed + 1 skipped (18 iter4 + 17 iter3 + 18 iter2 + 34 iter1). Verified backend: condition node correctly routes via 'true'/'false' edge labels (FALSE_BRANCH_HIT_50 fired for 50<100, TRUE_BRANCH_HIT_250 fired for 250>100); 9 operators (==,!=,>,<,>=,<=,contains,starts_with,ends_with) all evaluated correctly via _eval_condition unit tests; /api/flows/{id}/analytics returns totals{sessions,completed,active,completion_rate} + node_stats[] with correct count and visit growth across sessions; /api/flows/{id}/qr returns valid wa.me URL + base64 PNG (verified PNG magic bytes \\x89PNG); 400 when no credential, 404 when unknown flow id; node_visits accumulates per execution. Frontend: /app/guide page renders all 10 sections (section-{getting-started,whatsapp,leads,campaigns,flows,qr,erp,team,analytics,subscription}) AND all 10 toc-* links; AppShell sidebar shows 'User Guide' nav (a[href=/app/guide]); /USER_GUIDE.md served HTTP 200, 11068 bytes; Flows list shows 12 qr-{id} + 12 analytics-{id} icons; Analytics modal opens with sessions/active/completed/completion% cards + per-node table; QR modal opens for an Active flow with rendered PNG image (data:image/png;base64,iVBORw0KG...) + Download PNG button + wa.me URL display + trigger keyword + phone number; FlowBuilder palette-condition + palette-api buttons exist, clicking each adds a node (1->3); api-url inspector renders for api node.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/flows/{id}/analytics", "issue": "drop_off computation subtracts visits at downstream targets only via direct edges; for branched flows where one branch is the natural exit (no outgoing edge), drop_off can over-count successful completion as drop. Acceptable for MVP but mark in tooltip."},
+      {"endpoint": "/api/flows/{id}/qr", "issue": "Phone is taken from credential whatsapp_from with simple replace('+','') / replace('whatsapp:',''); does not validate E.164 length. If admin saved a malformed cred, QR could produce bad URL. Add regex check."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "FlowBuilder condition inspector", "issue": "Operator <select> and Value <input> for condition node do NOT have data-testids (only cond-variable has one). Adding data-testid='cond-operator' and 'cond-value' would make E2E selectors stable.", "selector": "/app/frontend/src/pages/FlowBuilder.jsx lines 377-393", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard Overview", "issues": ["Recharts width(-1)/height(-1) console warnings persist (carry-over from iter1-3, non-blocking)."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration4.py",
+    "/app/test_reports/pytest/iter4_results.xml",
+    "/app/test_reports/pytest/iter4_regression.xml"
+  ],
+  "action_items": [
+    "(Optional) Add data-testid='cond-operator' and 'cond-value' to the operator <select> and value <input> in FlowBuilder.jsx around lines 377-393 for stable E2E targeting.",
+    "(Optional) In analytics drop_off computation, treat nodes that have no outgoing edges (natural ends like /send terminal or /end) as not contributing to drop-off when session ended successfully.",
+    "(Optional) Validate E.164 format in /api/flows/{id}/qr before constructing wa.me URL."
+  ],
+  "critical_code_review_comments": [
+    "flow_engine.condition handler falls back to edges[0]/edges[1] when no edge matches 'true'/'false' label — silently picks wrong branch instead of raising. Better to require label match and 400 on publish if condition node has fewer than 2 labelled outgoing edges (true+false).",
+    "/api/flows/{id}/analytics will be O(N) over all sessions ever (no archiving), to_list(5000) silently truncates. Add tenant-level retention or pagination.",
+    "/api/flows/{id}/qr regenerates the QR PNG on every request (CPU). Cache by (flow_id, keyword, phone) — keyword/phone rarely change.",
+    "FlowBuilder lacks E2E data-testids on the operator <select> and value <input> for condition nodes — see ui_bugs.",
+    "UserGuide.jsx is 326 lines of static JSX content; consider splitting per-section components or moving content into the markdown source-of-truth /USER_GUIDE.md and rendering with a markdown parser to avoid drift between the two.",
+    "publish_flow still does not validate that start_node_id exists in nodes[] (carry-over recommendation from iter-3).",
+    "_step recursion has no max-hop guard (carry-over from iter-3) — condition+send loops could infinite-loop."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration4.py (NEW — 18 pytest cases)"
+  ],
+  "success_rate": {"backend": "100% — 18/18 iter4 pass + 69/69 iter1-3 regressions still green (87 passed, 1 skipped)", "frontend": "100% — UserGuide page (10/10 sections + 10/10 TOC + sidebar entry), USER_GUIDE.md served 200, Flows list QR+analytics icons, Analytics modal, QR modal with rendered PNG + download button, FlowBuilder palette-condition + palette-api both work, api-url inspector confirmed."},
+  "test_credentials": "demo@test.com / demo1234 (admin Demo Inc tenant). Twilio sandbox credential id auto-discovered.",
+  "seed_data_creation": "18 iter-4 tests create ~3 TEST_-prefixed flows on demo tenant and run conversations/sessions on +9199970x phones. TestFlowCleanup deletes the main TEST_cond_* flow at end. Stray TEST_qr_nocred_* draft flow remains (intentional — used in 400-error test, not deleted to keep failure case reproducible). Prior iter1-3 stray flows (~10 TEST_* drafts) carry over.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Full regression: cd /app/backend && pytest tests/ -v → 87 pass + 1 skip. Iteration-4 file: tests/test_iteration4.py. Condition node flow shape used: start(n1)→ask(n2,var=amount)→condition(n3,>,100)→send(n4,'TRUE_BRANCH_HIT_{{amount}}')|send(n5,'FALSE_BRANCH_HIT_{{amount}}'); edges from n3 use label='true'/'false'. Messages endpoint is /api/conversations/{conv_id}/messages NOT /api/messages. Frontend testids: section-{id} + toc-{id} on UserGuide where id is one of getting-started/whatsapp/leads/campaigns/flows/qr/erp/team/analytics/subscription; qr-{flowId}, analytics-{flowId}, publish-{flowId} on Flows list; qr-image, qr-download in QR modal; palette-{send|ask|choice|branch|condition|api|end} in FlowBuilder palette; cond-variable + api-url in inspector (operator/value lack testids). Sidebar: a[href='/app/guide']. /USER_GUIDE.md served from /app/frontend/public.",
+  "rca of the issue": "No critical bugs in iteration-4. All declared features work correctly end-to-end."
+}

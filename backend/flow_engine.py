@@ -60,6 +60,30 @@ def _interpolate(text: str, variables: dict) -> str:
     return out
 
 
+def _eval_condition(left: str, op: str, right: str) -> bool:
+    """Evaluate a condition. Tries numeric comparison first, falls back to string."""
+    op = (op or "==").strip()
+    # numeric coercion
+    try:
+        ln, rn = float(left), float(right)
+        if op == "==": return ln == rn
+        if op == "!=": return ln != rn
+        if op == ">": return ln > rn
+        if op == "<": return ln < rn
+        if op == ">=": return ln >= rn
+        if op == "<=": return ln <= rn
+    except (ValueError, TypeError):
+        pass
+    ls = str(left or "").lower()
+    rs = str(right or "").lower()
+    if op == "==": return ls == rs
+    if op == "!=": return ls != rs
+    if op == "contains": return rs in ls
+    if op == "starts_with": return ls.startswith(rs)
+    if op == "ends_with": return ls.endswith(rs)
+    return False
+
+
 async def _send(db, flow: dict, conversation: dict, content: str):
     """Send a message via the flow's credential and persist."""
     from datetime import datetime, timezone
@@ -102,6 +126,10 @@ async def _step(db, flow: dict, conversation: dict, session: dict, inbound_text:
         return session
     ntype = node.get("type", "send")
     data = node.get("data", {}) or {}
+
+    # --- track node visit ---
+    visits = session.setdefault("node_visits", {})
+    visits[node["id"]] = visits.get(node["id"], 0) + 1
 
     # --- node behaviour ---
     if ntype == "start":
@@ -180,6 +208,26 @@ async def _step(db, flow: dict, conversation: dict, session: dict, inbound_text:
     if ntype == "branch":
         match = inbound_text or ""
         nxt = _next_node(flow, node["id"], label_match=match)
+        session["current_node_id"] = nxt
+        if nxt:
+            session = await _step(db, flow, conversation, session, None)
+        else:
+            session["status"] = "ended"
+        return session
+
+    if ntype == "condition":
+        # Evaluate condition: {variable}|{op}|{value}; route by 'true'/'false' edge label
+        var_name = data.get("variable", "")
+        op = data.get("operator", "==")
+        compare_to = _interpolate(str(data.get("value", "")), session.get("variables", {}))
+        actual = str((session.get("variables") or {}).get(var_name, ""))
+        result = _eval_condition(actual, op, compare_to)
+        nxt = _next_node(flow, node["id"], label_match="true" if result else "false")
+        # Fallback to first/second edge if no label match
+        if not nxt:
+            edges = _edges_from(flow, node["id"])
+            if edges:
+                nxt = edges[0]["target"] if result else (edges[1]["target"] if len(edges) > 1 else edges[0]["target"])
         session["current_node_id"] = nxt
         if nxt:
             session = await _step(db, flow, conversation, session, None)

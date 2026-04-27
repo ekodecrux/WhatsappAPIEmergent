@@ -5,7 +5,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import api from '../lib/api';
-import { ArrowLeft, Plus, Save, Power, Send, Trash2, Settings, Play, MessageCircle, HelpCircle, GitBranch, X, Sparkles, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Plus, Save, Power, Send, Trash2, Settings, Play, MessageCircle, HelpCircle, GitBranch, Globe, ScanLine, X, Sparkles, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 
 const TYPE_META = {
@@ -14,6 +14,8 @@ const TYPE_META = {
   ask: { label: 'Ask question', color: '#0EA5E9', icon: HelpCircle },
   choice: { label: 'Choice menu', color: '#A855F7', icon: GitBranch },
   branch: { label: 'Keyword branch', color: '#F59E0B', icon: GitBranch },
+  condition: { label: 'Condition (var)', color: '#0891B2', icon: ScanLine },
+  api: { label: 'API / Webhook', color: '#475569', icon: Globe },
   end: { label: 'End', color: '#EF4444', icon: Power },
 };
 
@@ -62,6 +64,8 @@ const nodeTypes = {
   ask: NodeCard,
   choice: NodeCard,
   branch: NodeCard,
+  condition: NodeCard,
+  api: NodeCard,
   end: NodeCard,
 };
 
@@ -112,6 +116,8 @@ export default function FlowBuilder() {
       ask: { prompt: 'What is your name?', variable: 'name' },
       choice: { prompt: 'Pick one:', options: ['Option A', 'Option B'] },
       branch: { },
+      condition: { variable: 'amount', operator: '>', value: '10000' },
+      api: { url: 'https://your-erp.com/webhook', method: 'POST' },
       end: { message: 'Thanks for chatting!' },
       start: { label: 'Start' },
     }[type] || {};
@@ -346,6 +352,67 @@ export default function FlowBuilder() {
                         placeholder="Yes\nNo"
                       />
                       <p className="mt-1 text-[10px] text-zinc-500">Add an outgoing edge per option and label the edge with the option text to route correctly.</p>
+                    </div>
+                  </>
+                )}
+
+                {selected.type === 'condition' && (
+                  <>
+                    <p className="text-[10px] leading-relaxed text-zinc-500">
+                      Compare a captured variable against a value. Label outgoing edges <span className="font-mono">true</span> or <span className="font-mono">false</span> to route.
+                    </p>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-zinc-700">Variable</label>
+                      <input
+                        data-testid="cond-variable"
+                        value={selected.data?.variable || ''}
+                        onChange={(e) => updateNodeData(selected.id, { variable: e.target.value.replace(/\s/g, '_') })}
+                        placeholder="amount"
+                        className="w-full rounded-md border border-zinc-300 px-2 py-1.5 font-mono text-xs"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-zinc-700">Operator</label>
+                        <select
+                          value={selected.data?.operator || '=='}
+                          onChange={(e) => updateNodeData(selected.id, { operator: e.target.value })}
+                          className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-xs"
+                        >
+                          {['==', '!=', '>', '<', '>=', '<=', 'contains', 'starts_with', 'ends_with'].map(op => <option key={op}>{op}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-zinc-700">Value</label>
+                        <input
+                          value={selected.data?.value || ''}
+                          onChange={(e) => updateNodeData(selected.id, { value: e.target.value })}
+                          placeholder="10000"
+                          className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-xs"
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {selected.type === 'api' && (
+                  <>
+                    <p className="text-[10px] leading-relaxed text-zinc-500">
+                      Sends a POST with all captured variables to the URL. Useful for ERP/CRM integration.
+                    </p>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-zinc-700">URL</label>
+                      <input
+                        data-testid="api-url"
+                        type="url"
+                        value={selected.data?.url || ''}
+                        onChange={(e) => updateNodeData(selected.id, { url: e.target.value })}
+                        placeholder="https://your-erp.com/webhook"
+                        className="w-full rounded-md border border-zinc-300 px-2 py-1.5 font-mono text-xs"
+                      />
+                    </div>
+                    <div className="rounded-md bg-zinc-50 p-2 font-mono text-[10px] leading-snug text-zinc-600">
+                      {`POST { variables, phone }`}
                     </div>
                   </>
                 )}

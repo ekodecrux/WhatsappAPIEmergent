@@ -22,6 +22,7 @@ import Billing from './pages/Billing';
 import Integrations from './pages/Integrations';
 import Settings from './pages/Settings';
 import Team from './pages/Team';
+import UserGuide from './pages/UserGuide';
 
 function Private({ children }) {
   const { user } = useAuth();
@@ -54,6 +55,7 @@ export default function App() {
             <Route path="billing" element={<Billing />} />
             <Route path="integrations" element={<Integrations />} />
             <Route path="team" element={<Team />} />
+            <Route path="guide" element={<UserGuide />} />
             <Route path="settings" element={<Settings />} />
           </Route>
 

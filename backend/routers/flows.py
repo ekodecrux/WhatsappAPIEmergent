@@ -309,3 +309,88 @@ async def list_sessions(current=Depends(get_current_user)):
         {"_id": 0},
     ).sort("updated_at", -1)
     return await cur.to_list(100)
+
+
+# ============ Analytics ============
+@router.get("/{fid}/analytics")
+async def flow_analytics(fid: str, current=Depends(get_current_user)):
+    """Return per-node visit counts, total/active/completed sessions."""
+    f = await db.flows.find_one({"id": fid, "tenant_id": current["tenant_id"]}, {"_id": 0})
+    if not f:
+        raise HTTPException(404, "Not found")
+
+    sessions = await db.flow_sessions.find({"flow_id": fid, "tenant_id": current["tenant_id"]}, {"_id": 0}).to_list(5000)
+    total = len(sessions)
+    completed = sum(1 for s in sessions if s.get("status") == "ended")
+    active = sum(1 for s in sessions if s.get("status") in ("running", "waiting"))
+
+    node_visits: dict[str, int] = {}
+    for s in sessions:
+        for nid, count in (s.get("node_visits") or {}).items():
+            node_visits[nid] = node_visits.get(nid, 0) + count
+
+    # Drop-off: visits at this node minus visits at any subsequent (next-edge) node
+    nodes = f.get("nodes", [])
+    edges = f.get("edges", [])
+    node_stats = []
+    for n in nodes:
+        nid = n["id"]
+        visits = node_visits.get(nid, 0)
+        # sum of visits at all nodes this one points to
+        downstream = sum(node_visits.get(e["target"], 0) for e in edges if e.get("source") == nid)
+        drop = max(0, visits - downstream)
+        drop_pct = round((drop / visits) * 100, 1) if visits else 0
+        node_stats.append({
+            "node_id": nid,
+            "type": n.get("type"),
+            "label": (n.get("data", {}) or {}).get("message") or (n.get("data", {}) or {}).get("prompt") or (n.get("data", {}) or {}).get("label") or n.get("type"),
+            "visits": visits,
+            "drop_off": drop,
+            "drop_off_pct": drop_pct,
+        })
+
+    completion_rate = round((completed / total) * 100, 1) if total else 0
+    return {
+        "totals": {"sessions": total, "completed": completed, "active": active, "completion_rate": completion_rate},
+        "node_stats": node_stats,
+    }
+
+
+# ============ QR code ============
+@router.get("/{fid}/qr")
+async def flow_qr(fid: str, current=Depends(get_current_user)):
+    """Generate a wa.me QR code that auto-fills the trigger keyword on WhatsApp.
+
+    Returns: { url, image_base64 } — image is a PNG.
+    """
+    import io, base64
+    import qrcode
+
+    f = await db.flows.find_one({"id": fid, "tenant_id": current["tenant_id"]}, {"_id": 0})
+    if not f:
+        raise HTTPException(404, "Not found")
+    if not f.get("credential_id"):
+        raise HTTPException(400, "Connect a WhatsApp credential first")
+
+    cred = await db.whatsapp_credentials.find_one({"id": f["credential_id"]}, {"_id": 0})
+    if not cred:
+        raise HTTPException(400, "Credential missing")
+
+    # First trigger keyword (defaults to 'hi')
+    triggers = f.get("triggers", []) or []
+    keywords = (triggers[0].get("keywords") if triggers else []) or ["hi"]
+    keyword = keywords[0]
+
+    # Phone number: strip 'whatsapp:' prefix and '+'
+    phone = (cred.get("whatsapp_from", "") or "").replace("whatsapp:", "").replace("+", "")
+    if not phone:
+        raise HTTPException(400, "Credential has no WhatsApp from-number")
+
+    from urllib.parse import quote
+    url = f"https://wa.me/{phone}?text={quote(keyword)}"
+
+    img = qrcode.make(url)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    image_b64 = base64.b64encode(buf.getvalue()).decode()
+    return {"url": url, "image_base64": image_b64, "keyword": keyword, "phone": phone}
