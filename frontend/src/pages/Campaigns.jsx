@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import api from '../lib/api';
-import { Send, Plus, Play, Pause, X, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
+import { Send, Plus, Play, Pause, X, CheckCircle2, Clock, AlertCircle, RotateCw } from 'lucide-react';
 import { toast } from 'sonner';
 
 const STATUS_STYLE = {
@@ -64,6 +64,11 @@ export default function Campaigns() {
   const pause = async (id) => {
     await api.post(`/campaigns/${id}/pause`, {});
     toast.success('Paused');
+    load();
+  };
+  const resume = async (id) => {
+    await api.post(`/campaigns/${id}/resume`, {});
+    toast.success('Resumed');
     load();
   };
 
@@ -135,6 +140,11 @@ export default function Campaigns() {
                       {c.status === 'running' && (
                         <button data-testid={`pause-${c.id}`} onClick={() => pause(c.id)} className="inline-flex items-center gap-1 rounded-md border border-zinc-300 px-2.5 py-1 text-[11px] font-medium hover:bg-zinc-50">
                           <Pause className="h-3 w-3" /> Pause
+                        </button>
+                      )}
+                      {c.status === 'paused' && (
+                        <button data-testid={`resume-${c.id}`} onClick={() => resume(c.id)} className="inline-flex items-center gap-1 rounded-md bg-wa-dark px-2.5 py-1 text-[11px] font-medium text-white hover:bg-wa-mid">
+                          <RotateCw className="h-3 w-3" /> Resume
                         </button>
                       )}
                     </div>

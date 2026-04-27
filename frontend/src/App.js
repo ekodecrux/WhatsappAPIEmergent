@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import AcceptInvite from './pages/AcceptInvite';
 import AppShell from './components/AppShell';
 import Dashboard from './pages/Dashboard';
 import WhatsAppSetup from './pages/WhatsAppSetup';
@@ -18,6 +19,7 @@ import Analytics from './pages/Analytics';
 import Billing from './pages/Billing';
 import Integrations from './pages/Integrations';
 import Settings from './pages/Settings';
+import Team from './pages/Team';
 
 function Private({ children }) {
   const { user } = useAuth();
@@ -34,6 +36,7 @@ export default function App() {
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/accept-invite" element={<AcceptInvite />} />
 
           <Route path="/app" element={<Private><AppShell /></Private>}>
             <Route index element={<Dashboard />} />
@@ -46,6 +49,7 @@ export default function App() {
             <Route path="analytics" element={<Analytics />} />
             <Route path="billing" element={<Billing />} />
             <Route path="integrations" element={<Integrations />} />
+            <Route path="team" element={<Team />} />
             <Route path="settings" element={<Settings />} />
           </Route>
 

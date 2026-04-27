@@ -4,10 +4,11 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, WebSocket, WebSocketDisconnect, Query
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
+import jwt as _jwt
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -61,22 +62,54 @@ async def health():
 
 # Import routes after db is set up to avoid circular issues
 from routers import auth as r_auth  # noqa: E402
+from routers import otp as r_otp  # noqa: E402
 from routers import whatsapp as r_whatsapp  # noqa: E402
 from routers import campaigns as r_campaigns  # noqa: E402
 from routers import chat as r_chat  # noqa: E402
 from routers import billing as r_billing  # noqa: E402
 from routers import integrations as r_integrations  # noqa: E402
 from routers import dashboard as r_dashboard  # noqa: E402
+from routers import team as r_team  # noqa: E402
 
 api_router.include_router(r_auth.router)
+api_router.include_router(r_otp.router)
 api_router.include_router(r_whatsapp.router)
 api_router.include_router(r_campaigns.router)
 api_router.include_router(r_chat.router)
 api_router.include_router(r_billing.router)
 api_router.include_router(r_integrations.router)
 api_router.include_router(r_dashboard.router)
+api_router.include_router(r_team.router)
 
 app.include_router(api_router)
+
+
+# ===== WebSocket for real-time chat =====
+from ws_manager import ws_manager  # noqa: E402
+
+
+@app.websocket("/api/ws")
+async def ws_endpoint(websocket: WebSocket, token: str = Query(...)):
+    """Authenticate via ?token=<jwt>, then join tenant room. Server broadcasts chat events."""
+    try:
+        payload = _jwt.decode(token, os.environ["JWT_SECRET"], algorithms=[os.environ.get("JWT_ALGORITHM", "HS256")])
+        tenant_id = payload.get("tid")
+        if not tenant_id:
+            await websocket.close(code=4401)
+            return
+    except Exception:
+        await websocket.close(code=4401)
+        return
+
+    await ws_manager.connect(websocket, tenant_id)
+    try:
+        while True:
+            # client may send pings; we ignore content
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        ws_manager.disconnect(websocket, tenant_id)
+    except Exception:
+        ws_manager.disconnect(websocket, tenant_id)
 
 app.add_middleware(
     CORSMiddleware,

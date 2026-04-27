@@ -79,6 +79,14 @@ export default function Leads() {
     } catch { toast.error('Import failed'); }
   };
 
+  const onFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => setCsv(String(ev.target?.result || ''));
+    reader.readAsText(file);
+  };
+
   return (
     <div className="mx-auto max-w-7xl space-y-6 p-6">
       <div className="flex flex-col items-start justify-between gap-3 md:flex-row md:items-center">
@@ -186,7 +194,11 @@ export default function Leads() {
               <button onClick={() => setImportOpen(false)}><X className="h-4 w-4" /></button>
             </div>
             <form onSubmit={doImport} className="space-y-3">
-              <p className="text-xs text-zinc-600">Paste CSV with headers: phone, name, email, company.</p>
+              <p className="text-xs text-zinc-600">Upload a CSV or paste below. Required header: <span className="font-mono">phone</span>. Optional: <span className="font-mono">name, email, company</span>.</p>
+              <label className="block">
+                <span className="sr-only">Choose CSV file</span>
+                <input data-testid="csv-file" type="file" accept=".csv,text/csv" onChange={onFile} className="block w-full text-xs text-zinc-700 file:mr-3 file:rounded-md file:border file:border-zinc-300 file:bg-white file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-zinc-700 hover:file:bg-zinc-50" />
+              </label>
               <textarea data-testid="csv-input" rows={10} value={csv} onChange={(e) => setCsv(e.target.value)} className="w-full rounded-md border border-zinc-300 px-3 py-2 font-mono text-xs" />
               <div className="flex justify-end gap-2">
                 <button type="button" onClick={() => setImportOpen(false)} className="rounded-md border border-zinc-300 px-3 py-2 text-sm">Cancel</button>

@@ -8,7 +8,7 @@ from server import db
 from models import CampaignIn, CampaignApprove, uid, now
 from helpers import (
     get_current_user, decrypt_text, audit_log,
-    send_whatsapp_via_twilio, update_usage,
+    send_whatsapp_via_twilio, update_usage, run_sync,
 )
 
 router = APIRouter(prefix="/campaigns", tags=["campaigns"])
@@ -94,6 +94,22 @@ async def pause_campaign(cid: str, current=Depends(get_current_user)):
     return {"status": "paused"}
 
 
+@router.post("/{cid}/resume")
+async def resume_campaign(cid: str, background_tasks: BackgroundTasks, current=Depends(get_current_user)):
+    c = await db.campaigns.find_one({"id": cid, "tenant_id": current["tenant_id"]}, {"_id": 0})
+    if not c:
+        raise HTTPException(404, "Not found")
+    if c["status"] != "paused":
+        raise HTTPException(400, "Campaign is not paused")
+    await db.campaigns.update_one(
+        {"id": cid},
+        {"$set": {"status": "running", "resumed_at": now().isoformat()}},
+    )
+    await audit_log(current["tenant_id"], current["id"], "resume_campaign", cid)
+    background_tasks.add_task(_run_campaign, cid)
+    return {"status": "running"}
+
+
 async def _run_campaign(cid: str):
     """Background task to send campaign messages with rate limiting."""
     c = await db.campaigns.find_one({"id": cid}, {"_id": 0})
@@ -105,14 +121,20 @@ async def _run_campaign(cid: str):
     sid = decrypt_text(cred["account_sid_enc"])
     tok = decrypt_text(cred["auth_token_enc"])
 
-    sent = delivered = failed = 0
-    for phone in c.get("recipients", []):
+    sent = c.get("sent_count", 0)
+    delivered = c.get("delivered_count", 0)
+    failed = c.get("failed_count", 0)
+    # Skip already-sent recipients on resume
+    already_sent = sent
+    recipients_remaining = c.get("recipients", [])[already_sent:]
+
+    for phone in recipients_remaining:
         # Check pause status
         cc = await db.campaigns.find_one({"id": cid}, {"_id": 0, "status": 1})
-        if cc and cc.get("status") == "paused":
+        if cc and cc.get("status") in ("paused", "rejected"):
             break
 
-        result = send_whatsapp_via_twilio(sid, tok, cred["whatsapp_from"], phone, c["message"])
+        result = await run_sync(send_whatsapp_via_twilio, sid, tok, cred["whatsapp_from"], phone, c["message"])
         sent += 1
         if result.get("success"):
             delivered += 1
@@ -162,13 +184,17 @@ async def _run_campaign(cid: str):
         # Rate limit: ~10/sec
         await asyncio.sleep(0.1)
 
+    final_status = "completed"
+    cc = await db.campaigns.find_one({"id": cid}, {"_id": 0, "status": 1})
+    if cc and cc.get("status") == "paused":
+        final_status = "paused"
     await db.campaigns.update_one(
         {"id": cid},
         {"$set": {
-            "status": "completed",
+            "status": final_status,
             "sent_count": sent,
             "delivered_count": delivered,
             "failed_count": failed,
-            "completed_at": now().isoformat(),
+            "completed_at": now().isoformat() if final_status == "completed" else None,
         }},
     )

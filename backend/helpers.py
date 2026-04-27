@@ -1,5 +1,6 @@
 """Auth, encryption, integration helpers"""
 import os
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -299,3 +300,102 @@ async def update_usage(tenant_id: str, field: str, increment: int = 1):
         {"$inc": {field: increment}, "$setOnInsert": {"tenant_id": tenant_id, "date": today}},
         upsert=True,
     )
+
+
+# ================ Async wrappers for sync SDKs ================
+async def run_sync(fn, *args, **kwargs):
+    """Run a sync (blocking) function in the default executor — keeps event loop free."""
+    loop = asyncio.get_event_loop()
+    if kwargs:
+        from functools import partial
+        fn = partial(fn, *args, **kwargs)
+        return await loop.run_in_executor(None, fn)
+    return await loop.run_in_executor(None, fn, *args)
+
+
+# ================ OTP (email + sms via Twilio Verify) ================
+def generate_otp(length: int = 6) -> str:
+    return "".join(secrets.choice("0123456789") for _ in range(length))
+
+
+def hash_otp(code: str, email_or_phone: str) -> str:
+    """Hash OTP with channel salt to prevent cross-channel reuse."""
+    return hashlib.sha256(f"{code}:{email_or_phone}".encode()).hexdigest()
+
+
+async def store_email_otp(email: str, code: str, ttl_minutes: int = 5):
+    expires = datetime.now(timezone.utc) + timedelta(minutes=ttl_minutes)
+    await db.otp_codes.update_one(
+        {"channel": "email", "identifier": email.lower()},
+        {"$set": {
+            "channel": "email",
+            "identifier": email.lower(),
+            "code_hash": hash_otp(code, email.lower()),
+            "expires_at": expires.isoformat(),
+            "attempts": 0,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
+
+
+async def verify_email_otp(email: str, code: str) -> bool:
+    rec = await db.otp_codes.find_one({"channel": "email", "identifier": email.lower()}, {"_id": 0})
+    if not rec:
+        return False
+    if rec.get("attempts", 0) >= 5:
+        return False
+    expires = datetime.fromisoformat(rec["expires_at"])
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
+    if datetime.now(timezone.utc) > expires:
+        return False
+    expected = rec["code_hash"]
+    actual = hash_otp(code, email.lower())
+    if not hmac.compare_digest(expected, actual):
+        await db.otp_codes.update_one({"channel": "email", "identifier": email.lower()}, {"$inc": {"attempts": 1}})
+        return False
+    await db.otp_codes.delete_one({"channel": "email", "identifier": email.lower()})
+    return True
+
+
+def send_otp_email(to: str, code: str) -> bool:
+    html = f"""
+    <div style="font-family: -apple-system, Inter, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
+      <h2 style="color: #075E54; margin: 0 0 8px 0;">Your verification code</h2>
+      <p style="color: #4b5563; margin: 0 0 24px 0;">Use the code below to continue. It expires in 5 minutes.</p>
+      <div style="background:#f3f4f6; border-radius:8px; padding:24px; text-align:center;">
+        <div style="font-size:36px; letter-spacing:12px; font-weight:700; color:#075E54; font-family:monospace;">{code}</div>
+      </div>
+      <p style="color:#9ca3af; font-size:12px; margin-top:24px;">If you didn't request this, you can ignore this email.</p>
+    </div>
+    """
+    return send_email(to, f"Your wabridge code: {code}", html)
+
+
+def send_twilio_verify(phone: str, channel: str = "sms") -> dict:
+    """Trigger Twilio Verify OTP."""
+    try:
+        c = get_twilio_client()
+        v = c.verify.v2.services(os.environ["TWILIO_VERIFY_SID"]).verifications.create(to=phone, channel=channel)
+        return {"success": True, "sid": v.sid, "status": v.status}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def check_twilio_verify(phone: str, code: str) -> dict:
+    try:
+        c = get_twilio_client()
+        ck = c.verify.v2.services(os.environ["TWILIO_VERIFY_SID"]).verification_checks.create(to=phone, code=code)
+        return {"success": ck.status == "approved", "status": ck.status}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+# ================ Team invites ================
+def generate_invite_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def hash_invite_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()

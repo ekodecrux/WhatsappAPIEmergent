@@ -23,6 +23,8 @@ export function AuthProvider({ children }) {
     setUser(u);
   };
 
+  const setSession = (data) => persist(data);
+
   const login = async (email, password) => {
     setLoading(true);
     try {
@@ -58,7 +60,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, refreshUser, loading }}>
+    <AuthContext.Provider value={{ user, login, register, logout, refreshUser, setSession, loading }}>
       {children}
     </AuthContext.Provider>
   );

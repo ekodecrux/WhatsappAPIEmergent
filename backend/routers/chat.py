@@ -8,8 +8,9 @@ from models import (
 )
 from helpers import (
     get_current_user, decrypt_text, audit_log,
-    send_whatsapp_via_twilio, ai_suggest_reply, update_usage,
+    send_whatsapp_via_twilio, ai_suggest_reply, update_usage, run_sync,
 )
+from ws_manager import ws_manager
 
 router = APIRouter(tags=["chat-leads"])
 
@@ -72,7 +73,7 @@ async def send_in_conversation(conv_id: str, payload: SendMessageIn, current=Dep
 
     sid = decrypt_text(cred["account_sid_enc"])
     tok = decrypt_text(cred["auth_token_enc"])
-    result = send_whatsapp_via_twilio(sid, tok, cred["whatsapp_from"], conv["customer_phone"], payload.content)
+    result = await run_sync(send_whatsapp_via_twilio, sid, tok, cred["whatsapp_from"], conv["customer_phone"], payload.content)
 
     msg_doc = {
         "id": uid(),
@@ -86,12 +87,19 @@ async def send_in_conversation(conv_id: str, payload: SendMessageIn, current=Dep
         "error": None if result.get("success") else result.get("error"),
     }
     await db.messages.insert_one(msg_doc)
+    msg_doc.pop("_id", None)
     await db.conversations.update_one(
         {"id": conv_id},
         {"$set": {"last_message": payload.content, "last_message_at": now().isoformat()}},
     )
     await update_usage(current["tenant_id"], "messages_sent", 1)
-    return {"success": result.get("success", False), "message": {**msg_doc}}
+    # Realtime broadcast
+    await ws_manager.broadcast(current["tenant_id"], {
+        "type": "message",
+        "conversation_id": conv_id,
+        "message": msg_doc,
+    })
+    return {"success": result.get("success", False), "message": msg_doc}
 
 
 @router.get("/conversations/{conv_id}/ai-suggestion")

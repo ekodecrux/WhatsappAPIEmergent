@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import api from '../lib/api';
+import api, { API_BASE } from '../lib/api';
 import { Send, Sparkles, Search, MessageCircle, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -37,11 +37,46 @@ export default function Chat() {
   };
 
   useEffect(() => { loadConvs(); loadCreds(); }, []);
+
+  // WebSocket for real-time message broadcast
+  useEffect(() => {
+    const token = localStorage.getItem('wa_token');
+    if (!token) return;
+    const wsBase = API_BASE.replace(/^http/, 'ws');
+    const wsUrl = `${wsBase}/ws?token=${encodeURIComponent(token)}`;
+    let ws;
+    let reconnectTimer;
+    const connect = () => {
+      try {
+        ws = new WebSocket(wsUrl);
+        ws.onmessage = (ev) => {
+          try {
+            const data = JSON.parse(ev.data);
+            if (data.type === 'message') {
+              loadConvs();
+              if (active && data.conversation_id === active.id) {
+                loadMessages(active.id);
+              }
+            }
+          } catch {}
+        };
+        ws.onclose = () => {
+          reconnectTimer = setTimeout(connect, 3000);
+        };
+        ws.onerror = () => {};
+      } catch { reconnectTimer = setTimeout(connect, 3000); }
+    };
+    connect();
+    return () => {
+      try { ws?.close(); } catch {}
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active?.id]);
+
   useEffect(() => {
     if (!active) return;
     loadMessages(active.id);
-    const t = setInterval(() => { loadMessages(active.id); loadConvs(); }, 4000);
-    return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.id]);
 

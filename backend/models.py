@@ -26,6 +26,38 @@ class LoginIn(BaseModel):
     password: str
 
 
+class EmailOtpRequestIn(BaseModel):
+    email: EmailStr
+    company_name: str | None = None  # only for signup
+    full_name: str | None = None     # only for signup
+    purpose: str = "login"           # "login" or "signup"
+
+
+class EmailOtpVerifyIn(BaseModel):
+    email: EmailStr
+    code: str
+    company_name: str | None = None
+    full_name: str | None = None
+    purpose: str = "login"
+
+
+class SmsOtpRequestIn(BaseModel):
+    phone: str  # E.164 format e.g. +919876543210
+    company_name: str | None = None
+    full_name: str | None = None
+    email: EmailStr | None = None
+    purpose: str = "login"
+
+
+class SmsOtpVerifyIn(BaseModel):
+    phone: str
+    code: str
+    company_name: str | None = None
+    full_name: str | None = None
+    email: EmailStr | None = None
+    purpose: str = "login"
+
+
 class TokenOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -160,3 +192,16 @@ class ErpSendMessageIn(BaseModel):
     credential_id: str | None = None
     to_phone: str
     message: str
+
+
+# ===== Team / Invites =====
+class InviteIn(BaseModel):
+    email: EmailStr
+    full_name: str | None = None
+    role: str = "member"  # admin | member | viewer
+
+
+class AcceptInviteIn(BaseModel):
+    token: str
+    password: str = Field(min_length=6)
+    full_name: str | None = None

@@ -10,8 +10,9 @@ from models import CredentialIn, CredentialOut, TemplateIn, SendMessageIn, uid, 
 from helpers import (
     get_current_user, encrypt_text, decrypt_text, mask, audit_log,
     send_whatsapp_via_twilio, validate_twilio_credentials, update_usage,
-    ai_suggest_reply, ai_analyze_sentiment,
+    ai_suggest_reply, ai_analyze_sentiment, run_sync,
 )
+from ws_manager import ws_manager
 
 router = APIRouter(prefix="/whatsapp", tags=["whatsapp"])
 
@@ -110,7 +111,7 @@ async def send_one(payload: SendMessageIn, current=Depends(get_current_user)):
     sid = decrypt_text(cred["account_sid_enc"])
     tok = decrypt_text(cred["auth_token_enc"])
 
-    result = send_whatsapp_via_twilio(sid, tok, cred["whatsapp_from"], payload.to_phone, payload.content)
+    result = await run_sync(send_whatsapp_via_twilio, sid, tok, cred["whatsapp_from"], payload.to_phone, payload.content)
 
     # Track conversation
     conv = await db.conversations.find_one(
@@ -231,10 +232,10 @@ async def twilio_inbound(request: Request):
         )
 
     # Sentiment + AI suggestion
-    sentiment = ai_analyze_sentiment(body)
-    suggestion = ai_suggest_reply(body)
+    sentiment = await run_sync(ai_analyze_sentiment, body)
+    suggestion = await run_sync(ai_suggest_reply, body)
 
-    await db.messages.insert_one({
+    msg_doc = {
         "id": uid(),
         "conversation_id": conv["id"],
         "tenant_id": tenant_id,
@@ -245,7 +246,10 @@ async def twilio_inbound(request: Request):
         "sent_at": now().isoformat(),
         "ai_response_suggestion": suggestion,
         "sentiment": sentiment.get("sentiment"),
-    })
+    }
+    await db.messages.insert_one(msg_doc)
+    msg_doc.pop("_id", None)
+    await ws_manager.broadcast(tenant_id, {"type": "message", "conversation_id": conv["id"], "message": msg_doc})
 
     await db.conversations.update_one(
         {"id": conv["id"]},
@@ -324,11 +328,11 @@ async def simulate_inbound(body: dict, current=Depends(get_current_user)):
              "$set": {"last_message": text, "last_message_at": now().isoformat()}},
         )
 
-    sentiment = ai_analyze_sentiment(text)
-    suggestion = ai_suggest_reply(text)
+    sentiment = await run_sync(ai_analyze_sentiment, text)
+    suggestion = await run_sync(ai_suggest_reply, text)
 
     msg_id = uid()
-    await db.messages.insert_one({
+    msg_doc = {
         "id": msg_id,
         "conversation_id": conv["id"],
         "tenant_id": current["tenant_id"],
@@ -338,7 +342,10 @@ async def simulate_inbound(body: dict, current=Depends(get_current_user)):
         "sent_at": now().isoformat(),
         "ai_response_suggestion": suggestion,
         "sentiment": sentiment.get("sentiment"),
-    })
+    }
+    await db.messages.insert_one(msg_doc)
+    msg_doc.pop("_id", None)
+    await ws_manager.broadcast(current["tenant_id"], {"type": "message", "conversation_id": conv["id"], "message": msg_doc})
 
     await db.conversations.update_one(
         {"id": conv["id"]},
