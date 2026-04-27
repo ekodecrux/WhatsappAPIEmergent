@@ -256,7 +256,18 @@ async def twilio_inbound(request: Request):
         {"$set": {"sentiment": sentiment.get("sentiment"), "lead_score": sentiment.get("lead_score", 50)}},
     )
 
-    # Auto-reply rules
+    # Trigger flow engine — may consume the message
+    flow_handled = False
+    try:
+        from flow_engine import trigger_or_continue
+        flow_handled = await trigger_or_continue(db, tenant_id, conv, body)
+    except Exception as e:
+        print(f"[flow_engine] webhook trigger error: {e}")
+
+    # Auto-reply rules — only if a flow didn't already respond
+    if flow_handled:
+        return PlainTextResponse("<Response/>", media_type="text/xml")
+
     rules = await db.auto_reply_rules.find(
         {"tenant_id": tenant_id, "credential_id": cred["id"], "is_active": True},
         {"_id": 0},
@@ -267,7 +278,7 @@ async def twilio_inbound(request: Request):
         if r.get("trigger_type") == "always" or any(k in body_low for k in keywords):
             sid_dec = decrypt_text(cred["account_sid_enc"])
             tok_dec = decrypt_text(cred["auth_token_enc"])
-            send_whatsapp_via_twilio(sid_dec, tok_dec, cred["whatsapp_from"], customer_phone, r["reply_message"])
+            await run_sync(send_whatsapp_via_twilio, sid_dec, tok_dec, cred["whatsapp_from"], customer_phone, r["reply_message"])
             await db.messages.insert_one({
                 "id": uid(),
                 "conversation_id": conv["id"],
@@ -351,4 +362,12 @@ async def simulate_inbound(body: dict, current=Depends(get_current_user)):
         {"id": conv["id"]},
         {"$set": {"sentiment": sentiment.get("sentiment"), "lead_score": sentiment.get("lead_score", 50)}},
     )
+
+    # Trigger active chatbot flow (if any)
+    try:
+        from flow_engine import trigger_or_continue
+        await trigger_or_continue(db, current["tenant_id"], conv, text)
+    except Exception as e:
+        print(f"[flow_engine] simulate trigger error: {e}")
+
     return {"ok": True, "conversation_id": conv["id"], "message_id": msg_id, "suggestion": suggestion}

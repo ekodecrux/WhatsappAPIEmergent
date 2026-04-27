@@ -1,0 +1,54 @@
+{
+  "summary": "Iteration 3 (Chatbot Flow builder + engine) tested end-to-end. Added 17 new backend tests covering templates listing, from-template creation, CRUD, publish/unpublish, test-runner, session lifecycle, and the full banking flow engine path (start→ask captures variable→choice routes by index→send branch auto-ends). All 17 iter3 tests PASS. All 52 iter1+iter2 regressions still PASS (1 skip, same as before). Found & fixed one critical bug: simulate_inbound raised NameError on every call because msg_id was never defined (line 346 whatsapp.py). Frontend Playwright verified: sidebar 'Chatbot Flows' nav, 5 template cards (tpl-blank/banking/training/lead_qualifier/support_faq), template click → FlowBuilder route, ReactFlow canvas rendering all 9 banking nodes with data-testid='flow-node-{id}', 5 palette buttons (palette-send/ask/choice/branch/end), add-node (9→10), Save, Publish→active badge, Unpublish. Test modal elements exist but click was intercepted by stacked sonner toasts after save+publish; non-blocking as backend test endpoint is already fully verified by pytest.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/whatsapp/simulate-inbound", "issue": "NameError: 'msg_id' is not defined — undefined variable at whatsapp.py:346 caused 500 on every simulate call once iter-3 flow trigger code was added. FIXED in this run by inserting `msg_id = uid()` above msg_doc dict. After fix all flow-engine runtime tests pass and iter-1 TestSimulateInbound regression still green.", "priority": "CRITICAL"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/flows/{id}/test", "issue": "If trigger_or_continue matches a different already-active flow (keyword overlap), the /test endpoint happily starts a session on THAT flow instead of the one under test. Expected for shared keyword 'hi' across multiple active banking flows during development but could surprise users. Consider always force-starting session on the target flow in /test rather than falling back to trigger match."},
+      {"endpoint": "POST /api/flows", "issue": "No body validation — accepts empty name/nodes; would allow publishing a zero-node flow if start_node_id is somehow set. publish_flow correctly 400s when start_node_id missing, so not exploitable."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "FlowBuilder Test modal open after Save+Publish", "issue": "Stacked sonner toasts ('Saved', 'Live ✓') sit in top-right and can intercept the Test button click immediately after publish. Click with force=True works programmatically; real users would just wait 2s. Consider z-index 50 toast vs toolbar, or offset toasts below toolbar.", "affected_selectors": ["[data-testid=flow-test]"]}
+    ],
+    "design_issues": [
+      {"screen": "Dashboard Overview", "issues": ["Recharts width(-1)/height(-1) console warnings persist — carry-over from iter-1/iter-2, non-blocking."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration3_flows.py",
+    "/app/backend/tests/test_iteration2.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/iter3_results.xml",
+    "/app/test_reports/pytest/iter3_regression.xml"
+  ],
+  "action_items": [
+    "(No action needed for critical bug — already fixed by testing agent.) Main agent please review the msg_id fix applied at /app/backend/routers/whatsapp.py line 345.",
+    "Optional: harden /api/flows/{id}/test to always start a session on the target flow instead of deferring to trigger_or_continue (prevents accidentally exercising a different active flow with an overlapping keyword).",
+    "Optional: re-position or lower z-index of sonner toasts so they don't overlap FlowBuilder toolbar after rapid Save+Publish.",
+    "Optional: add server-side min-length / required-fields validation to POST /api/flows body."
+  ],
+  "critical_code_review_comments": [
+    "flows.py /test endpoint unconditionally calls trigger_or_continue first — when another active flow matches the keyword, the 'this flow' manual fallback never runs. Either force-start the target flow's session or use a dedicated path distinct from the generic trigger engine.",
+    "flow_engine._step recurses for send/branch/start/end/choice-matched transitions without a depth guard. A user-authored cycle (e.g. choice→send→choice) would infinite-loop. Add a max-hop counter (e.g. 50 hops per step) to defend against bad flow authoring.",
+    "flow_engine._send swallows WS broadcast exceptions but persists outbound even when Twilio send fails — status='failed' is recorded, which is correct, but there is no user-facing signal on FlowBuilder for 'last run failed to deliver'. Consider surfacing in Flows list.",
+    "Publish endpoint validates credential_id + start_node_id presence but NOT that the start node actually exists in nodes[] (could be stale id after editing). Add start_node_id membership check.",
+    "flows router does not paginate — to_list(200) will silently truncate at 200 flows per tenant. OK for MVP.",
+    "FlowBuilder calls save() inside togglePublish and test(); a failure in save still proceeds to publish/test in some paths — wrap publish/test in else branch that only fires on save success.",
+    "simulate_inbound had an undefined-variable regression (msg_id) that went undetected because iter-1/iter-2 tests exercised simulate-inbound BEFORE the new code path was added; the integration of flow_engine made that code reachable without any new test catching it. The fact that backend_test.py TestSimulateInbound continued to pass (after fix) shows the regression suite must be re-run whenever a router is modified — which wasn't done for iter-3."
+  ],
+  "updated_files": [
+    "/app/backend/routers/whatsapp.py (fixed: added msg_id = uid() before msg_doc in simulate_inbound)",
+    "/app/backend/tests/test_iteration3_flows.py (NEW — 17 pytest cases)"
+  ],
+  "success_rate": {"backend": "100% — 69 passed, 1 skipped (17 iter3 + 34 iter1 + 18 iter2). All previously-green tests still green after fix.", "frontend": "~95% — all critical iter-3 UI surfaces verified (nav, templates, builder canvas, palette, save, publish). Only Test-modal run-button was not exercised via UI due to toast overlap; endpoint itself validated via backend pytest."},
+  "test_credentials": "demo@test.com / demo1234 (admin Demo Inc tenant). Sandbox credential already connected from iteration-1 testing.",
+  "seed_data_creation": "17 iter-3 tests create TEST_-prefixed flows (banking/blank) on demo tenant and flow_sessions on unique +9199970x phones. Final TestFlowDelete removes the main banking test flow; stray draft 'TEST_nocred_*' and 'TEST_blank_*' flows remain (no unique index conflict).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Full regression: `cd /app/backend && pytest tests/ -v` → 69 pass + 1 skip. Iteration-3 file: tests/test_iteration3_flows.py. The banking template has exact structure: start(n1) → ask(n2,var=phone_last4) → choice(n3,4 options) → [n4 balance-send | n5 tx-send | n6→n7→n8 transfer | n9 agent-end]. Sessions after 'Check balance' (index 1) end because n4 has no outgoing edge. Use `trigger_or_continue` end-to-end for advancing via /api/whatsapp/simulate-inbound with the same customer_phone. Frontend key testids: tpl-{blank|banking|training|lead_qualifier|support_faq}, flow-node-{id}, palette-{send|ask|choice|branch|end}, flow-name, flow-cred, flow-save, flow-publish, flow-test, test-phone, test-msg, test-run, node-message, node-prompt, node-variable, flow-triggers. The new-flow (blank) button has testid 'new-flow' and calls fromTemplate({id:'blank'}).",
+  "rca of the issue": "CRITICAL BUG RCA — NameError in simulate_inbound: When iter-3 added the `from flow_engine import trigger_or_continue` + call block at the END of simulate_inbound, the developer also refactored the msg_doc assignment but forgot to assign msg_id = uid() before constructing the dict. Python only raises NameError when the function body reaches that line; since pytest for iter-1 TestSimulateInbound wasn't re-run after the iter-3 merge, the regression slipped through. REPRODUCTION: POST /api/whatsapp/simulate-inbound {from_phone,text,credential_id} → 500 Internal Server Error every call. FIX: Inserted `msg_id = uid()` above the msg_doc literal at whatsapp.py:345. Verified by re-running 69-test regression suite all-green."
+}

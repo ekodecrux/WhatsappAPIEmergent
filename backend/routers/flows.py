@@ -1,0 +1,311 @@
+"""Flow / chatbot designer routes."""
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException
+
+from server import db
+from models import uid, now
+from helpers import get_current_user, audit_log
+from flow_engine import trigger_or_continue
+
+
+router = APIRouter(prefix="/flows", tags=["flows"])
+
+
+# ============ Templates ============
+TEMPLATES = {
+    "blank": {
+        "name": "Blank flow",
+        "description": "Start from scratch.",
+        "category": "Custom",
+        "nodes": [
+            {"id": "n1", "type": "start", "position": {"x": 100, "y": 100}, "data": {"label": "Start"}},
+        ],
+        "edges": [],
+        "triggers": [{"type": "keyword", "keywords": ["start"]}],
+    },
+    "banking": {
+        "name": "Mobile Banking Bot",
+        "description": "Account balance, recent transactions, fund transfer menu.",
+        "category": "Banking",
+        "triggers": [{"type": "keyword", "keywords": ["bank", "account", "balance", "hi"]}],
+        "nodes": [
+            {"id": "n1", "type": "start", "position": {"x": 50, "y": 100}, "data": {"label": "Start"}},
+            {"id": "n2", "type": "ask", "position": {"x": 250, "y": 100}, "data": {"prompt": "Welcome to SecureBank. To verify, please share your registered mobile number (last 4 digits).", "variable": "phone_last4"}},
+            {"id": "n3", "type": "choice", "position": {"x": 500, "y": 100}, "data": {"prompt": "Hi {{phone_last4}}, what would you like to do today?", "options": ["Check balance", "Last 5 transactions", "Transfer funds", "Talk to agent"]}},
+            {"id": "n4", "type": "send", "position": {"x": 750, "y": 0}, "data": {"message": "Your current balance is ₹84,532.67 (as of today)."}},
+            {"id": "n5", "type": "send", "position": {"x": 750, "y": 100}, "data": {"message": "Last 5: \n1. Amazon — ₹2,340 \n2. Salary — +₹1,20,000 \n3. Swiggy — ₹520 \n4. Electricity — ₹2,100 \n5. ATM — ₹5,000"}},
+            {"id": "n6", "type": "ask", "position": {"x": 750, "y": 200}, "data": {"prompt": "Enter beneficiary mobile number to transfer funds:", "variable": "beneficiary"}},
+            {"id": "n7", "type": "ask", "position": {"x": 1000, "y": 200}, "data": {"prompt": "Amount in INR?", "variable": "amount"}},
+            {"id": "n8", "type": "send", "position": {"x": 1250, "y": 200}, "data": {"message": "₹{{amount}} sent to {{beneficiary}}. Reference: TXN-{{phone_last4}}-OK"}},
+            {"id": "n9", "type": "end", "position": {"x": 750, "y": 320}, "data": {"message": "Connecting you to a human agent. Please hold."}},
+        ],
+        "edges": [
+            {"id": "e1", "source": "n1", "target": "n2"},
+            {"id": "e2", "source": "n2", "target": "n3"},
+            {"id": "e3", "source": "n3", "target": "n4", "label": "Check balance"},
+            {"id": "e4", "source": "n3", "target": "n5", "label": "Last 5 transactions"},
+            {"id": "e5", "source": "n3", "target": "n6", "label": "Transfer funds"},
+            {"id": "e6", "source": "n3", "target": "n9", "label": "Talk to agent"},
+            {"id": "e7", "source": "n6", "target": "n7"},
+            {"id": "e8", "source": "n7", "target": "n8"},
+        ],
+    },
+    "training": {
+        "name": "Training Certification",
+        "description": "Quiz-based training with completion certificate.",
+        "category": "Education",
+        "triggers": [{"type": "keyword", "keywords": ["train", "course", "certificate"]}],
+        "nodes": [
+            {"id": "n1", "type": "start", "position": {"x": 50, "y": 100}, "data": {"label": "Start"}},
+            {"id": "n2", "type": "ask", "position": {"x": 250, "y": 100}, "data": {"prompt": "Welcome to the WhatsApp Marketing Mastery course. What's your full name?", "variable": "name"}},
+            {"id": "n3", "type": "send", "position": {"x": 500, "y": 100}, "data": {"message": "Hi {{name}}! Let's get started with a 3-question quiz."}},
+            {"id": "n4", "type": "choice", "position": {"x": 750, "y": 100}, "data": {"prompt": "Q1: What is the WhatsApp Business API rate limit per second?", "options": ["80 msg/s", "10 msg/s", "1000 msg/s"]}},
+            {"id": "n5", "type": "choice", "position": {"x": 1000, "y": 100}, "data": {"prompt": "Q2: Which message type requires opt-in?", "options": ["Marketing", "Authentication", "Service"]}},
+            {"id": "n6", "type": "choice", "position": {"x": 1250, "y": 100}, "data": {"prompt": "Q3: AES-256 stands for?", "options": ["Encryption standard", "API protocol", "WhatsApp tier"]}},
+            {"id": "n7", "type": "end", "position": {"x": 1500, "y": 100}, "data": {"message": "🎓 Congrats {{name}}! You've completed the course. Certificate ID: WMM-{{name}}-2026. We'll email a PDF copy."}},
+        ],
+        "edges": [
+            {"id": "e1", "source": "n1", "target": "n2"},
+            {"id": "e2", "source": "n2", "target": "n3"},
+            {"id": "e3", "source": "n3", "target": "n4"},
+            {"id": "e4", "source": "n4", "target": "n5", "label": "80 msg/s"},
+            {"id": "e5", "source": "n4", "target": "n5", "label": "10 msg/s"},
+            {"id": "e6", "source": "n4", "target": "n5", "label": "1000 msg/s"},
+            {"id": "e7", "source": "n5", "target": "n6", "label": "Marketing"},
+            {"id": "e8", "source": "n5", "target": "n6", "label": "Authentication"},
+            {"id": "e9", "source": "n5", "target": "n6", "label": "Service"},
+            {"id": "e10", "source": "n6", "target": "n7"},
+        ],
+    },
+    "lead_qualifier": {
+        "name": "Lead Qualifier",
+        "description": "Capture name, company, budget — qualify automatically.",
+        "category": "Sales",
+        "triggers": [{"type": "keyword", "keywords": ["pricing", "demo", "interested"]}],
+        "nodes": [
+            {"id": "n1", "type": "start", "position": {"x": 50, "y": 100}, "data": {"label": "Start"}},
+            {"id": "n2", "type": "ask", "position": {"x": 250, "y": 100}, "data": {"prompt": "Thanks for your interest! Can I get your full name?", "variable": "name"}},
+            {"id": "n3", "type": "ask", "position": {"x": 500, "y": 100}, "data": {"prompt": "Hi {{name}}! Which company are you with?", "variable": "company"}},
+            {"id": "n4", "type": "choice", "position": {"x": 750, "y": 100}, "data": {"prompt": "Approx team size at {{company}}?", "options": ["1-10", "11-50", "51-200", "200+"]}},
+            {"id": "n5", "type": "end", "position": {"x": 1000, "y": 100}, "data": {"message": "Thanks {{name}}! Our enterprise team will reach out to you within 1 business hour."}},
+        ],
+        "edges": [
+            {"id": "e1", "source": "n1", "target": "n2"},
+            {"id": "e2", "source": "n2", "target": "n3"},
+            {"id": "e3", "source": "n3", "target": "n4"},
+            {"id": "e4", "source": "n4", "target": "n5"},
+        ],
+    },
+    "support_faq": {
+        "name": "Support FAQ Bot",
+        "description": "Routes common support questions to canned answers.",
+        "category": "Support",
+        "triggers": [{"type": "keyword", "keywords": ["help", "support", "issue"]}],
+        "nodes": [
+            {"id": "n1", "type": "start", "position": {"x": 50, "y": 100}, "data": {"label": "Start"}},
+            {"id": "n2", "type": "choice", "position": {"x": 250, "y": 100}, "data": {"prompt": "Hi! How can we help?", "options": ["Reset password", "Billing question", "Talk to agent"]}},
+            {"id": "n3", "type": "send", "position": {"x": 500, "y": 0}, "data": {"message": "Reset link: https://app.example.com/reset — link valid for 30 minutes."}},
+            {"id": "n4", "type": "send", "position": {"x": 500, "y": 100}, "data": {"message": "Visit your billing portal: https://app.example.com/billing"}},
+            {"id": "n5", "type": "end", "position": {"x": 500, "y": 200}, "data": {"message": "Connecting you to a human agent."}},
+        ],
+        "edges": [
+            {"id": "e1", "source": "n1", "target": "n2"},
+            {"id": "e2", "source": "n2", "target": "n3", "label": "Reset password"},
+            {"id": "e3", "source": "n2", "target": "n4", "label": "Billing question"},
+            {"id": "e4", "source": "n2", "target": "n5", "label": "Talk to agent"},
+        ],
+    },
+}
+
+
+@router.get("/templates")
+async def list_templates(current=Depends(get_current_user)):
+    return [
+        {"id": k, "name": v["name"], "description": v["description"], "category": v["category"]}
+        for k, v in TEMPLATES.items()
+    ]
+
+
+@router.post("/from-template/{template_id}")
+async def from_template(template_id: str, body: dict | None = None, current=Depends(get_current_user)):
+    tpl = TEMPLATES.get(template_id)
+    if not tpl:
+        raise HTTPException(404, "Template not found")
+    body = body or {}
+    fid = uid()
+    # set start node id
+    nodes = tpl.get("nodes", [])
+    start = next((n for n in nodes if n.get("type") == "start"), nodes[0] if nodes else None)
+    flow = {
+        "id": fid,
+        "tenant_id": current["tenant_id"],
+        "name": body.get("name") or tpl["name"],
+        "description": tpl["description"],
+        "credential_id": body.get("credential_id"),
+        "status": "draft",
+        "triggers": tpl.get("triggers", []),
+        "nodes": nodes,
+        "edges": tpl.get("edges", []),
+        "start_node_id": start.get("id") if start else None,
+        "created_by": current["id"],
+        "created_at": now().isoformat(),
+        "updated_at": now().isoformat(),
+    }
+    await db.flows.insert_one({**flow})
+    flow.pop("_id", None)
+    await audit_log(current["tenant_id"], current["id"], "create_flow", fid, {"template": template_id})
+    return flow
+
+
+# ============ CRUD ============
+@router.post("")
+async def create_flow(body: dict, current=Depends(get_current_user)):
+    fid = uid()
+    flow = {
+        "id": fid,
+        "tenant_id": current["tenant_id"],
+        "name": body.get("name", "Untitled flow"),
+        "description": body.get("description", ""),
+        "credential_id": body.get("credential_id"),
+        "status": "draft",
+        "triggers": body.get("triggers", [{"type": "keyword", "keywords": ["start"]}]),
+        "nodes": body.get("nodes", []),
+        "edges": body.get("edges", []),
+        "start_node_id": body.get("start_node_id"),
+        "created_by": current["id"],
+        "created_at": now().isoformat(),
+        "updated_at": now().isoformat(),
+    }
+    await db.flows.insert_one({**flow})
+    flow.pop("_id", None)
+    return flow
+
+
+@router.get("")
+async def list_flows(current=Depends(get_current_user)):
+    cur = db.flows.find({"tenant_id": current["tenant_id"]}, {"_id": 0}).sort("created_at", -1)
+    return await cur.to_list(200)
+
+
+@router.get("/{fid}")
+async def get_flow(fid: str, current=Depends(get_current_user)):
+    f = await db.flows.find_one({"id": fid, "tenant_id": current["tenant_id"]}, {"_id": 0})
+    if not f:
+        raise HTTPException(404, "Not found")
+    return f
+
+
+@router.put("/{fid}")
+async def update_flow(fid: str, body: dict, current=Depends(get_current_user)):
+    allowed = {"name", "description", "credential_id", "triggers", "nodes", "edges", "start_node_id", "status"}
+    upd = {k: v for k, v in body.items() if k in allowed}
+    if not upd:
+        return {"updated": 0}
+    upd["updated_at"] = now().isoformat()
+    res = await db.flows.update_one({"id": fid, "tenant_id": current["tenant_id"]}, {"$set": upd})
+    return {"updated": res.modified_count}
+
+
+@router.delete("/{fid}")
+async def delete_flow(fid: str, current=Depends(get_current_user)):
+    await db.flow_sessions.delete_many({"flow_id": fid, "tenant_id": current["tenant_id"]})
+    res = await db.flows.delete_one({"id": fid, "tenant_id": current["tenant_id"]})
+    return {"deleted": bool(res.deleted_count)}
+
+
+@router.post("/{fid}/publish")
+async def publish_flow(fid: str, current=Depends(get_current_user)):
+    f = await db.flows.find_one({"id": fid, "tenant_id": current["tenant_id"]}, {"_id": 0})
+    if not f:
+        raise HTTPException(404, "Not found")
+    if not f.get("credential_id"):
+        raise HTTPException(400, "Connect a WhatsApp credential before publishing")
+    if not f.get("nodes") or not f.get("start_node_id"):
+        raise HTTPException(400, "Flow has no start node")
+    await db.flows.update_one({"id": fid}, {"$set": {"status": "active", "updated_at": now().isoformat()}})
+    await audit_log(current["tenant_id"], current["id"], "publish_flow", fid)
+    return {"status": "active"}
+
+
+@router.post("/{fid}/unpublish")
+async def unpublish_flow(fid: str, current=Depends(get_current_user)):
+    await db.flows.update_one({"id": fid, "tenant_id": current["tenant_id"]}, {"$set": {"status": "draft", "updated_at": now().isoformat()}})
+    return {"status": "draft"}
+
+
+# ============ Test runner ============
+@router.post("/{fid}/test")
+async def test_flow(fid: str, body: dict, current=Depends(get_current_user)):
+    """Simulate triggering this flow on a test conversation. Body: {customer_phone, message}."""
+    f = await db.flows.find_one({"id": fid, "tenant_id": current["tenant_id"]}, {"_id": 0})
+    if not f:
+        raise HTTPException(404, "Not found")
+    if not f.get("credential_id"):
+        raise HTTPException(400, "Connect a WhatsApp credential first")
+    customer_phone = body.get("customer_phone") or "+919999000001"
+    inbound = body.get("message") or "test"
+
+    conv = await db.conversations.find_one(
+        {"tenant_id": current["tenant_id"], "customer_phone": customer_phone},
+        {"_id": 0},
+    )
+    if not conv:
+        conv = {
+            "id": uid(),
+            "tenant_id": current["tenant_id"],
+            "credential_id": f["credential_id"],
+            "customer_phone": customer_phone,
+            "customer_name": "Flow Tester",
+            "status": "active",
+            "unread_count": 0,
+            "lead_score": 50,
+            "last_message": inbound,
+            "last_message_at": now().isoformat(),
+            "created_at": now().isoformat(),
+        }
+        await db.conversations.insert_one(conv)
+
+    # Persist inbound message
+    await db.messages.insert_one({
+        "id": uid(),
+        "conversation_id": conv["id"],
+        "tenant_id": current["tenant_id"],
+        "direction": "inbound",
+        "content": inbound,
+        "status": "received",
+        "sent_at": now().isoformat(),
+    })
+
+    # Force-trigger this flow if no session is active
+    handled = await trigger_or_continue(db, current["tenant_id"], conv, inbound)
+    if not handled:
+        # No trigger matched — start session manually using flow's start node
+        from flow_engine import _step
+        start_id = f.get("start_node_id") or (f.get("nodes", [{}])[0].get("id") if f.get("nodes") else None)
+        if start_id:
+            session = {
+                "id": uid(),
+                "tenant_id": current["tenant_id"],
+                "conversation_id": conv["id"],
+                "flow_id": f["id"],
+                "current_node_id": start_id,
+                "variables": {"_inbound": inbound},
+                "status": "running",
+                "started_at": now().isoformat(),
+                "updated_at": now().isoformat(),
+            }
+            session = await _step(db, f, conv, session, None)
+            await db.flow_sessions.insert_one({**session})
+
+    return {"ok": True, "conversation_id": conv["id"]}
+
+
+# ============ Sessions ============
+@router.get("/sessions/active")
+async def list_sessions(current=Depends(get_current_user)):
+    cur = db.flow_sessions.find(
+        {"tenant_id": current["tenant_id"], "status": {"$in": ["running", "waiting"]}},
+        {"_id": 0},
+    ).sort("updated_at", -1)
+    return await cur.to_list(100)

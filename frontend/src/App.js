@@ -15,6 +15,8 @@ import Leads from './pages/Leads';
 import Chat from './pages/Chat';
 import AutoReplies from './pages/AutoReplies';
 import Templates from './pages/Templates';
+import Flows from './pages/Flows';
+import FlowBuilder from './pages/FlowBuilder';
 import Analytics from './pages/Analytics';
 import Billing from './pages/Billing';
 import Integrations from './pages/Integrations';
@@ -46,6 +48,8 @@ export default function App() {
             <Route path="chat" element={<Chat />} />
             <Route path="auto-replies" element={<AutoReplies />} />
             <Route path="templates" element={<Templates />} />
+            <Route path="flows" element={<Flows />} />
+            <Route path="flows/:id" element={<FlowBuilder />} />
             <Route path="analytics" element={<Analytics />} />
             <Route path="billing" element={<Billing />} />
             <Route path="integrations" element={<Integrations />} />

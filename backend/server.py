@@ -70,6 +70,7 @@ from routers import billing as r_billing  # noqa: E402
 from routers import integrations as r_integrations  # noqa: E402
 from routers import dashboard as r_dashboard  # noqa: E402
 from routers import team as r_team  # noqa: E402
+from routers import flows as r_flows  # noqa: E402
 
 api_router.include_router(r_auth.router)
 api_router.include_router(r_otp.router)
@@ -80,6 +81,7 @@ api_router.include_router(r_billing.router)
 api_router.include_router(r_integrations.router)
 api_router.include_router(r_dashboard.router)
 api_router.include_router(r_team.router)
+api_router.include_router(r_flows.router)
 
 app.include_router(api_router)
 

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, MessageSquare, Send, Users, MessagesSquare, Bot,
-  FileText, BarChart3, CreditCard, Plug, UserPlus, Settings as SettingsIcon, LogOut,
+  FileText, Workflow, BarChart3, CreditCard, Plug, UserPlus, Settings as SettingsIcon, LogOut,
   Menu, X, ChevronRight, AlertTriangle, Sparkles
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -14,6 +14,7 @@ const NAV = [
   { to: '/app/leads', label: 'Leads / CRM', icon: Users },
   { to: '/app/chat', label: 'Live Chat', icon: MessagesSquare },
   { to: '/app/auto-replies', label: 'Auto-replies', icon: Bot },
+  { to: '/app/flows', label: 'Chatbot Flows', icon: Workflow },
   { to: '/app/templates', label: 'Templates', icon: FileText },
   { to: '/app/analytics', label: 'Analytics', icon: BarChart3 },
   { to: '/app/billing', label: 'Subscription', icon: CreditCard },
