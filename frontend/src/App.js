@@ -17,6 +17,8 @@ import AutoReplies from './pages/AutoReplies';
 import Templates from './pages/Templates';
 import Flows from './pages/Flows';
 import FlowBuilder from './pages/FlowBuilder';
+import Marketplace from './pages/Marketplace';
+import Delivery from './pages/Delivery';
 import Analytics from './pages/Analytics';
 import Billing from './pages/Billing';
 import Integrations from './pages/Integrations';
@@ -51,6 +53,8 @@ export default function App() {
             <Route path="templates" element={<Templates />} />
             <Route path="flows" element={<Flows />} />
             <Route path="flows/:id" element={<FlowBuilder />} />
+            <Route path="marketplace" element={<Marketplace />} />
+            <Route path="delivery" element={<Delivery />} />
             <Route path="analytics" element={<Analytics />} />
             <Route path="billing" element={<Billing />} />
             <Route path="integrations" element={<Integrations />} />

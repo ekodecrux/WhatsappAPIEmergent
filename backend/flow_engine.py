@@ -50,6 +50,31 @@ def _next_node(flow: dict, node_id: str, label_match: str | None = None) -> str 
     return edges[0]["target"] if edges else None
 
 
+def _localized_data(flow: dict, conversation: dict, node: dict) -> dict:
+    """Return node.data with translation applied if a matching translation exists for conversation's language."""
+    data = node.get("data") or {}
+    lang = (conversation or {}).get("preferred_language")
+    if not lang:
+        return data
+    translations = (flow.get("translations") or {}).get(lang)
+    if not translations:
+        return data
+    nid = node.get("id")
+    out = dict(data)
+    for field in ("message", "prompt", "label"):
+        key = f"{nid}.{field}"
+        if key in translations and isinstance(translations[key], str):
+            out[field] = translations[key]
+    opts = data.get("options")
+    if isinstance(opts, list):
+        new_opts = []
+        for i, opt in enumerate(opts):
+            key = f"{nid}.options.{i}"
+            new_opts.append(translations[key] if key in translations and isinstance(translations[key], str) else opt)
+        out["options"] = new_opts
+    return out
+
+
 def _interpolate(text: str, variables: dict) -> str:
     """Replace {{var}} with variable values."""
     if not text:
@@ -125,7 +150,7 @@ async def _step(db, flow: dict, conversation: dict, session: dict, inbound_text:
         session["status"] = "ended"
         return session
     ntype = node.get("type", "send")
-    data = node.get("data", {}) or {}
+    data = _localized_data(flow, conversation, node)
 
     # --- track node visit ---
     visits = session.setdefault("node_visits", {})
@@ -184,15 +209,24 @@ async def _step(db, flow: dict, conversation: dict, session: dict, inbound_text:
             await _send(db, flow, conversation, f"{prompt}\n{opts_text}")
             session["status"] = "waiting"
             return session
-        # match inbound to option
+        # match inbound to option (localized first, then English fallback)
+        original_options = (node.get("data") or {}).get("options") or []
+        localized_options = data.get("options", []) or []
         nxt = _next_node(flow, node["id"], label_match=inbound_text)
+        if not nxt:
+            # try matching localized option text → map back to original to find edge
+            inb_low = (inbound_text or "").strip().lower()
+            for i, lopt in enumerate(localized_options):
+                if str(lopt).strip().lower() == inb_low and i < len(original_options):
+                    nxt = _next_node(flow, node["id"], label_match=original_options[i])
+                    if nxt:
+                        break
         # also try matching by index
         if not nxt:
             try:
                 idx = int(inbound_text.strip()) - 1
-                options = data.get("options", [])
-                if 0 <= idx < len(options):
-                    nxt = _next_node(flow, node["id"], label_match=options[idx])
+                if 0 <= idx < len(original_options):
+                    nxt = _next_node(flow, node["id"], label_match=original_options[idx])
             except Exception:
                 pass
         if not nxt:

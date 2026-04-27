@@ -39,6 +39,9 @@ async def lifespan(app: FastAPI):
     await db.templates.create_index([("tenant_id", 1)])
     await db.api_keys.create_index("key_hash", unique=True)
     await db.audit_logs.create_index([("tenant_id", 1), ("created_at", -1)])
+    await db.marketplace_templates.create_index([("created_at", -1)])
+    await db.marketplace_templates.create_index([("downloads", -1)])
+    await db.marketplace_templates.create_index([("category", 1)])
     logger.info("WhatsApp SaaS started. DB: %s", os.environ["DB_NAME"])
     yield
     client.close()
@@ -71,6 +74,7 @@ from routers import integrations as r_integrations  # noqa: E402
 from routers import dashboard as r_dashboard  # noqa: E402
 from routers import team as r_team  # noqa: E402
 from routers import flows as r_flows  # noqa: E402
+from routers import marketplace as r_marketplace  # noqa: E402
 
 api_router.include_router(r_auth.router)
 api_router.include_router(r_otp.router)
@@ -82,6 +86,7 @@ api_router.include_router(r_integrations.router)
 api_router.include_router(r_dashboard.router)
 api_router.include_router(r_team.router)
 api_router.include_router(r_flows.router)
+api_router.include_router(r_marketplace.router)
 
 app.include_router(api_router)
 

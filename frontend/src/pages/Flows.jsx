@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../lib/api';
-import { Plus, Trash2, Power, Play, Edit, Sparkles, Workflow, Banknote, GraduationCap, Target, LifeBuoy, FileText, QrCode, BarChart3, X, Download, Copy, Wand2 } from 'lucide-react';
+import { Plus, Trash2, Power, Play, Edit, Sparkles, Workflow, Banknote, GraduationCap, Target, LifeBuoy, FileText, QrCode, BarChart3, X, Download, Copy, Wand2, Languages, Store, Upload, Check } from 'lucide-react';
 import { toast } from 'sonner';
 
 const TPL_ICONS = {
@@ -27,14 +27,20 @@ export default function Flows() {
   const [aiOpen, setAiOpen] = useState(false);
   const [aiDesc, setAiDesc] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
+  const [langModal, setLangModal] = useState(null); // {flow, available, supported}
+  const [pubModal, setPubModal] = useState(null);   // {flow, name, description, category, tags}
+  const [langBusy, setLangBusy] = useState(false);
+  const [pubBusy, setPubBusy] = useState(false);
+  const [supportedLangs, setSupportedLangs] = useState([]);
 
   const load = async () => {
-    const [f, t, c] = await Promise.all([
+    const [f, t, c, sl] = await Promise.all([
       api.get('/flows'),
       api.get('/flows/templates'),
       api.get('/whatsapp/credentials'),
+      api.get('/flows/_languages'),
     ]);
-    setFlows(f.data); setTemplates(t.data); setCreds(c.data);
+    setFlows(f.data); setTemplates(t.data); setCreds(c.data); setSupportedLangs(sl.data);
   };
   useEffect(() => { load(); }, []);
 
@@ -112,6 +118,70 @@ export default function Flows() {
 
   const copy = (t) => { navigator.clipboard.writeText(t); toast.success('Copied'); };
 
+  const openLang = async (f) => {
+    try {
+      const { data } = await api.get(`/flows/${f.id}/translations`);
+      setLangModal({ flow: f, ...data });
+    } catch (e) { toast.error('Failed to load translations'); }
+  };
+
+  const addLang = async (code) => {
+    if (!langModal?.flow) return;
+    setLangBusy(true);
+    try {
+      await api.post(`/flows/${langModal.flow.id}/translate`, { target_lang: code });
+      toast.success('Translation generated');
+      const { data } = await api.get(`/flows/${langModal.flow.id}/translations`);
+      setLangModal({ ...langModal, ...data });
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Translation failed');
+    } finally { setLangBusy(false); }
+  };
+
+  const removeLang = async (code) => {
+    if (!langModal?.flow) return;
+    if (!window.confirm(`Remove ${code.toUpperCase()} translation?`)) return;
+    try {
+      await api.delete(`/flows/${langModal.flow.id}/translations/${code}`);
+      const { data } = await api.get(`/flows/${langModal.flow.id}/translations`);
+      setLangModal({ ...langModal, ...data });
+      toast.success('Removed');
+    } catch (e) { toast.error('Failed'); }
+  };
+
+  const openPublish = (f) => {
+    if ((f.nodes || []).length < 2) { toast.error('Add at least 2 nodes before publishing'); return; }
+    setPubModal({
+      flow: f,
+      name: f.name,
+      description: f.description || '',
+      category: 'Custom',
+      tags: '',
+    });
+  };
+
+  const submitPublish = async () => {
+    if (!pubModal) return;
+    if ((pubModal.description || '').trim().length < 10) {
+      toast.error('Description must be at least 10 characters');
+      return;
+    }
+    setPubBusy(true);
+    try {
+      const tags = (pubModal.tags || '').split(',').map(s => s.trim()).filter(Boolean);
+      await api.post(`/marketplace/publish/${pubModal.flow.id}`, {
+        name: pubModal.name,
+        description: pubModal.description,
+        category: pubModal.category,
+        tags,
+      });
+      toast.success('Published to marketplace');
+      setPubModal(null);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Publish failed');
+    } finally { setPubBusy(false); }
+  };
+
   return (
     <div className="mx-auto max-w-7xl space-y-8 p-6">
       <div className="flex flex-col items-start justify-between gap-3 md:flex-row md:items-end">
@@ -120,6 +190,13 @@ export default function Flows() {
           <p className="mt-1 text-sm text-zinc-600">Visual mind-map builder. Drag, connect, publish.</p>
         </div>
         <div className="flex items-center gap-2">
+          <Link
+            data-testid="browse-marketplace"
+            to="/app/marketplace"
+            className="inline-flex items-center gap-1.5 rounded-md border border-zinc-300 bg-white px-3.5 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50"
+          >
+            <Store className="h-4 w-4" /> Marketplace
+          </Link>
           <button data-testid="ai-flow" onClick={() => setAiOpen(true)} className="inline-flex items-center gap-1.5 rounded-md border border-wa-light/40 bg-gradient-to-r from-wa-dark to-wa-mid px-3.5 py-2 text-sm font-medium text-white hover:opacity-90">
             <Wand2 className="h-4 w-4" /> Generate flow
           </button>
@@ -189,6 +266,12 @@ export default function Flows() {
                 </div>
               </div>
               <div className="flex items-center gap-1.5">
+                <button onClick={() => openLang(f)} data-testid={`lang-${f.id}`} title="Translations" className="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-100 hover:text-wa-dark">
+                  <Languages className="h-4 w-4" />
+                </button>
+                <button onClick={() => openPublish(f)} data-testid={`publish-market-${f.id}`} title="Publish to marketplace" className="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-100 hover:text-wa-dark">
+                  <Upload className="h-4 w-4" />
+                </button>
                 <button onClick={() => showAnalytics(f)} data-testid={`analytics-${f.id}`} title="Analytics" className="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-100 hover:text-wa-dark">
                   <BarChart3 className="h-4 w-4" />
                 </button>
@@ -336,6 +419,134 @@ export default function Flows() {
             </div>
             <div className="mt-4 flex justify-end">
               <button onClick={() => setAnalytics(null)} className="rounded-md border border-zinc-300 px-3 py-2 text-sm">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Languages modal */}
+      {langModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-md border border-zinc-200 bg-white p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="font-display text-lg font-semibold inline-flex items-center gap-2">
+                <Languages className="h-4 w-4 text-wa-dark" /> Translations · {langModal.flow.name}
+              </h3>
+              <button onClick={() => setLangModal(null)}><X className="h-4 w-4" /></button>
+            </div>
+            <p className="text-xs text-zinc-600">
+              Default language: <span className="font-mono uppercase">{langModal.default_language}</span>.
+              When a customer messages in another language, the bot replies in that language automatically.
+            </p>
+            <div className="mt-4">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Available translations</div>
+              <div className="mt-2 space-y-1.5">
+                {(langModal.available || []).length === 0 && <div className="text-xs text-zinc-500">No translations yet.</div>}
+                {(langModal.available || []).map(l => (
+                  <div key={l.code} className="flex items-center justify-between rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs">
+                    <div className="inline-flex items-center gap-2">
+                      <span className="rounded bg-white px-1.5 py-0.5 font-mono text-[10px] uppercase text-zinc-700">{l.code}</span>
+                      <span className="font-medium">{l.name}</span>
+                      <span className="text-zinc-500">· {l.string_count} strings</span>
+                    </div>
+                    <button data-testid={`lang-remove-${l.code}`} onClick={() => removeLang(l.code)} className="rounded p-1 text-zinc-500 hover:bg-red-50 hover:text-red-700">
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="mt-5">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Add a language</div>
+              <div className="mt-2 flex gap-2">
+                <select
+                  data-testid="lang-select"
+                  className="flex-1 rounded-md border border-zinc-300 px-3 py-2 text-sm"
+                  defaultValue=""
+                  onChange={(e) => { if (e.target.value) { addLang(e.target.value); e.target.value = ''; } }}
+                  disabled={langBusy}
+                >
+                  <option value="">Pick target language…</option>
+                  {supportedLangs
+                    .filter(l => l.code !== (langModal.default_language || 'en'))
+                    .filter(l => !(langModal.available || []).some(a => a.code === l.code))
+                    .map(l => <option key={l.code} value={l.code}>{l.name} ({l.code})</option>)}
+                </select>
+              </div>
+              {langBusy && <div className="mt-2 text-xs text-zinc-500 inline-flex items-center gap-1.5"><Sparkles className="h-3 w-3 animate-pulse" /> Translating with AI…</div>}
+            </div>
+            <div className="mt-5 flex justify-end">
+              <button onClick={() => setLangModal(null)} className="rounded-md border border-zinc-300 px-3 py-2 text-sm">Done</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Publish to marketplace modal */}
+      {pubModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-md border border-zinc-200 bg-white p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="font-display text-lg font-semibold inline-flex items-center gap-2">
+                <Store className="h-4 w-4 text-wa-dark" /> Publish to marketplace
+              </h3>
+              <button onClick={() => setPubModal(null)}><X className="h-4 w-4" /></button>
+            </div>
+            <p className="text-xs text-zinc-600">Share this flow with the community. Other tenants can clone it as a starting point — your private credentials and conversations stay private.</p>
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Title</label>
+                <input
+                  data-testid="pub-name"
+                  value={pubModal.name}
+                  onChange={(e) => setPubModal({ ...pubModal, name: e.target.value })}
+                  className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Description (min 10 chars)</label>
+                <textarea
+                  data-testid="pub-desc"
+                  rows={3}
+                  value={pubModal.description}
+                  onChange={(e) => setPubModal({ ...pubModal, description: e.target.value })}
+                  placeholder="Explain what this bot does, who it helps and how to customize it…"
+                  className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Category</label>
+                  <select
+                    data-testid="pub-category"
+                    value={pubModal.category}
+                    onChange={(e) => setPubModal({ ...pubModal, category: e.target.value })}
+                    className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+                  >
+                    {['Sales', 'Support', 'Banking', 'Education', 'Real Estate', 'Healthcare', 'E-commerce', 'Hospitality', 'Custom'].map(c => <option key={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Tags (comma-separated)</label>
+                  <input
+                    data-testid="pub-tags"
+                    value={pubModal.tags}
+                    onChange={(e) => setPubModal({ ...pubModal, tags: e.target.value })}
+                    placeholder="lead, qualifier, b2b"
+                    className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button onClick={() => setPubModal(null)} className="rounded-md border border-zinc-300 px-3 py-2 text-sm">Cancel</button>
+              <button
+                data-testid="pub-submit"
+                onClick={submitPublish}
+                disabled={pubBusy}
+                className="inline-flex items-center gap-1.5 rounded-md bg-wa-dark px-3 py-2 text-sm font-medium text-white hover:bg-wa-mid disabled:opacity-50"
+              >
+                {pubBusy ? 'Publishing…' : <><Check className="h-3.5 w-3.5" /> Publish</>}
+              </button>
             </div>
           </div>
         </div>

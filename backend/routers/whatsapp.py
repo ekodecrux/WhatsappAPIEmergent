@@ -235,6 +235,17 @@ async def twilio_inbound(request: Request):
     sentiment = await run_sync(ai_analyze_sentiment, body)
     suggestion = await run_sync(ai_suggest_reply, body)
 
+    # Detect language only once per conversation to save AI calls
+    if not conv.get("preferred_language") and body and len(body.strip()) >= 3:
+        try:
+            from flow_translate import detect_language
+            lang = await run_sync(detect_language, body)
+            if lang:
+                await db.conversations.update_one({"id": conv["id"]}, {"$set": {"preferred_language": lang}})
+                conv["preferred_language"] = lang
+        except Exception:
+            pass
+
     msg_doc = {
         "id": uid(),
         "conversation_id": conv["id"],
@@ -341,6 +352,17 @@ async def simulate_inbound(body: dict, current=Depends(get_current_user)):
 
     sentiment = await run_sync(ai_analyze_sentiment, text)
     suggestion = await run_sync(ai_suggest_reply, text)
+
+    # Detect & cache language for this conversation
+    if not conv.get("preferred_language") and text and len(text.strip()) >= 3:
+        try:
+            from flow_translate import detect_language
+            lang = await run_sync(detect_language, text)
+            if lang:
+                await db.conversations.update_one({"id": conv["id"]}, {"$set": {"preferred_language": lang}})
+                conv["preferred_language"] = lang
+        except Exception:
+            pass
 
     msg_id = uid()
     msg_doc = {

@@ -1,0 +1,49 @@
+{
+  "summary": "Iteration 6 (Multilingual flows + Marketplace + Delivery dashboard) tested end-to-end. Created /app/backend/tests/test_iteration6_multilingual_marketplace.py with 23 pytest cases — 22 PASS + 1 SKIP (Spanish translate hit Groq 429 rate-limit during full-suite run; verified working via standalone curl). Backend coverage: GET /flows/_languages returns all 23 expected codes; route-ordering /_languages vs /{fid} works; POST /flows/{id}/translate rejects same-default (400) and unsupported lang (400); PUT/DELETE /translations/{lang} round-trip persists; marketplace publish strips author_tenant_id+author_user_id, rejects flows<2 nodes (400) and description<10 chars (400); GET /templates supports search+sort=popular and never leaks tenant_id; clone increments downloads counter and creates draft flow; delete enforces 403 for non-author; categories returns distinct list; GET /dashboard/delivery returns totals(total/delivered/failed/pending/delivery_rate/failure_rate)+status_counts+trend(7 days)+recent_failed[]+by_campaign[]; auth-required on all key endpoints. Frontend coverage: login as demo@test.com OK; sidebar shows 'Marketplace' + 'Delivery Status' nav items; /app/marketplace renders 'Template Marketplace' with search input, category dropdown, sort dropdown ('Most recent'), and a published 'Lead Qualifier Pro' card showing '1 clones', tags, and 'Clone to my flows' button; /app/delivery renders 4 stat cards (Outbound/Delivered/Failed/Pending) + 'Sent vs Delivered vs Failed' bar chart + 'Status counts' + 'Per-campaign delivery' table; /app/flows shows per-flow [data-testid=lang-{id}] (Translations) and [data-testid=publish-market-{id}] (Publish to marketplace) icon buttons; clicking lang icon opens 'Translations · {flow}' modal with 'Available translations' (showing ES Spanish · 9 strings) + 'Add a language' Pick-target-language dropdown + Done button. Standalone Groq Spanish translation verified end-to-end on lead_qualifier flow: 9 strings translated, e.g. 'Gracias por su interés. ¿Puedo obtener su nombre completo?'.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/flows/{id}/translate", "issue": "On Groq 429 rate-limit, returns HTTP 500 with raw provider error text including organization id leaked verbatim ('Translation failed: Translation parse failed: [AI unavailable: Error code: 429 ... organization `org_01kpd2k79hfpwr1q0t1b5akstz` ...]'). Should map upstream rate-limit to 503 with a sanitized message and not leak org_id."},
+      {"endpoint": "PUT /api/flows/{id}/translations/{lang}", "issue": "Coerces all values to str via str(v) — but then returns body['updated']=len(incoming) which counts pre-validation entries (could be misleading if some values were dropped due to non-string). Minor."},
+      {"endpoint": "POST /api/marketplace/publish/{fid}", "issue": "Does not enforce a per-tenant publish-rate-limit; same flow can be republished unlimited times creating duplicate marketplace_templates (no dedupe on source_flow_id+author_tenant_id)."},
+      {"endpoint": "POST /api/marketplace/templates/{tpl_id}/clone", "issue": "Cloned flow uses the original template's start_node_id but does not validate it exists in nodes[] — defensive check missing."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Delivery Status page", "issues": ["Stat card label says 'Outbound (period)' instead of just 'Total' — minor wording inconsistency with task spec which expected 'Total' card. Functionally fine."]},
+      {"screen": "Translations modal (Flows page)", "issues": ["'Pick target language...' is rendered as a native HTML <select> rather than the shadcn Select component used elsewhere in the app — slight visual inconsistency."]},
+      {"screen": "Marketplace page", "issues": ["Category and Sort filters are native <select>; rest of app uses shadcn Select. Visual inconsistency only."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration6_multilingual_marketplace.py",
+    "/app/test_reports/pytest/iter6_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Sanitize Groq error responses on POST /flows/{id}/translate — map 429/upstream errors to 503 and strip org_id/internal details before returning to client.",
+    "(Optional) De-duplicate marketplace publishes per source_flow_id within the same tenant to prevent template list pollution.",
+    "(Optional) Replace native <select> elements in Translations modal, Marketplace category/sort filters with shadcn Select for visual consistency.",
+    "(Optional) Rename Delivery Status first stat card from 'Outbound (period)' to 'Total' to match spec wording."
+  ],
+  "critical_code_review_comments": [
+    "routers/flows.py translate_flow re-raises Groq Exception as HTTPException(500, f'Translation failed: {e}') leaking provider error verbatim including org_id — sanitize.",
+    "routers/marketplace.py clone_marketplace deep-copies nodes/edges by reference (`t.get('nodes', [])`) — if user mutates cloned flow's nodes via PUT, no risk to template (Mongo write replaces), but in-process mutations on the returned dict are shared with the original template doc until serialization. Low impact today but a subtle gotcha.",
+    "routers/marketplace.py publish_to_marketplace stores full nodes/edges/translations into marketplace_templates with no size cap; a tenant could publish 10MB flows and bloat the collection.",
+    "flow_translate.translate_flow_strings uses 2000 max_tokens — for flows with >50 strings this may truncate the JSON response causing parse failure; should chunk strings into batches.",
+    "routers/flows.py upsert_translation_strings silently drops non-string values and never returns which keys were dropped — caller has no way to know partial-write happened.",
+    "Carry-over from iter-5: ai_scaffold_apply does not clean up active flow_sessions; same applies if user replaces a published flow's nodes via PUT /flows/{id}."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration6_multilingual_marketplace.py (NEW — 23 pytest cases)"
+  ],
+  "success_rate": {"backend": "96% — 22/23 pass + 1 skipped due to external Groq 429 (verified working via standalone curl)", "frontend": "100% — Marketplace, Delivery Status, and Translations modal all render correctly with expected data and controls"},
+  "test_credentials": "demo@test.com / demo1234 (admin Demo Inc tenant)",
+  "seed_data_creation": "iter-6 tests create transient TEST_iter6_lead_*, TEST_iter6_pub_*, TEST_iter6_tiny_* flows + 1 'TEST_iter6 Lead Qualifier' marketplace template — all cleaned up by fixture teardown. A pre-existing 'Lead Qualifier Pro' marketplace template (1 clone) authored by Demo Inc remains as legitimate seed data demonstrating the marketplace working.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run backend regression: cd /app/backend && pytest tests/ -v. Iter6 file is tests/test_iteration6_multilingual_marketplace.py. The Spanish-translate test (test_translate_to_spanish) flakes on Groq 429 when run inside the full suite — it pytest.skip()s gracefully. Standalone curl proves Groq translation works (9 Spanish strings returned). Frontend testids confirmed: lang-{flow_id} (Translations icon), publish-market-{flow_id} (Publish to marketplace icon), browse-marketplace (header button). Public URL: https://messaging-vault.preview.emergentagent.com.",
+  "rca of the issue": "No production bugs found in iteration 6. The single test skip is an external Groq rate-limit (429) which is unavoidable when running many translation tests in sequence — the standalone Spanish translation works perfectly end-to-end (9 strings translated, Spanish text verified). The minor backend issues flagged (raw error leakage, missing dedupe) are quality improvements rather than blockers."
+}

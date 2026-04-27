@@ -8,6 +8,11 @@ from models import uid, now
 from helpers import get_current_user, audit_log, run_sync
 from flow_engine import trigger_or_continue
 from flow_ai import generate_scaffold
+from flow_translate import (
+    translate_flow_strings,
+    collect_translatable,
+    LANG_NAMES,
+)
 
 
 router = APIRouter(prefix="/flows", tags=["flows"])
@@ -244,6 +249,12 @@ async def list_flows(current=Depends(get_current_user)):
     return await cur.to_list(200)
 
 
+@router.get("/_languages")
+async def supported_languages(current=Depends(get_current_user)):
+    """List all supported translation target languages."""
+    return [{"code": k, "name": v} for k, v in LANG_NAMES.items()]
+
+
 @router.get("/{fid}")
 async def get_flow(fid: str, current=Depends(get_current_user)):
     f = await db.flows.find_one({"id": fid, "tenant_id": current["tenant_id"]}, {"_id": 0})
@@ -450,3 +461,100 @@ async def flow_qr(fid: str, current=Depends(get_current_user)):
     img.save(buf, format="PNG")
     image_b64 = base64.b64encode(buf.getvalue()).decode()
     return {"url": url, "image_base64": image_b64, "keyword": keyword, "phone": phone}
+
+
+# ============ Multilingual ============
+@router.get("/{fid}/translations")
+async def list_translations(fid: str, current=Depends(get_current_user)):
+    f = await db.flows.find_one({"id": fid, "tenant_id": current["tenant_id"]}, {"_id": 0})
+    if not f:
+        raise HTTPException(404, "Not found")
+    translations = f.get("translations") or {}
+    return {
+        "default_language": f.get("language") or "en",
+        "available": [
+            {"code": code, "name": LANG_NAMES.get(code, code), "string_count": len(t or {})}
+            for code, t in translations.items()
+        ],
+    }
+
+
+@router.post("/{fid}/translate")
+async def translate_flow(fid: str, body: dict, current=Depends(get_current_user)):
+    """Translate a flow into target_lang via Groq.
+
+    Body: { target_lang: "es" }
+    Stores translations[target_lang] as flat key dict.
+    """
+    target = (body.get("target_lang") or "").strip().lower()
+    if target not in LANG_NAMES:
+        raise HTTPException(400, "Unsupported target_lang")
+    f = await db.flows.find_one({"id": fid, "tenant_id": current["tenant_id"]}, {"_id": 0})
+    if not f:
+        raise HTTPException(404, "Not found")
+    if (f.get("language") or "en") == target:
+        raise HTTPException(400, "Target language is same as flow's default language")
+
+    strings = collect_translatable(f.get("nodes") or [])
+    if not strings:
+        raise HTTPException(400, "Flow has no text to translate")
+
+    try:
+        translated = await run_sync(translate_flow_strings, strings, target)
+    except Exception as e:
+        raise HTTPException(500, f"Translation failed: {e}")
+
+    translations = f.get("translations") or {}
+    translations[target] = translated
+    await db.flows.update_one(
+        {"id": fid, "tenant_id": current["tenant_id"]},
+        {"$set": {"translations": translations, "updated_at": now().isoformat()}},
+    )
+    await audit_log(current["tenant_id"], current["id"], "translate_flow", fid, {"lang": target, "strings": len(strings)})
+    return {
+        "language": target,
+        "language_name": LANG_NAMES[target],
+        "string_count": len(translated),
+        "translations": translated,
+    }
+
+
+@router.delete("/{fid}/translations/{lang}")
+async def delete_translation(fid: str, lang: str, current=Depends(get_current_user)):
+    f = await db.flows.find_one({"id": fid, "tenant_id": current["tenant_id"]}, {"_id": 0})
+    if not f:
+        raise HTTPException(404, "Not found")
+    translations = f.get("translations") or {}
+    if lang not in translations:
+        raise HTTPException(404, "Language not found")
+    translations.pop(lang, None)
+    await db.flows.update_one(
+        {"id": fid, "tenant_id": current["tenant_id"]},
+        {"$set": {"translations": translations, "updated_at": now().isoformat()}},
+    )
+    return {"deleted": True}
+
+
+@router.put("/{fid}/translations/{lang}")
+async def upsert_translation_strings(fid: str, lang: str, body: dict, current=Depends(get_current_user)):
+    """Manual edit of translation strings.
+
+    Body: { translations: { "n1.message": "Hola", ... } }
+    """
+    if lang not in LANG_NAMES:
+        raise HTTPException(400, "Unsupported language")
+    f = await db.flows.find_one({"id": fid, "tenant_id": current["tenant_id"]}, {"_id": 0})
+    if not f:
+        raise HTTPException(404, "Not found")
+    incoming = body.get("translations") or {}
+    if not isinstance(incoming, dict):
+        raise HTTPException(400, "translations must be an object")
+    translations = f.get("translations") or {}
+    cur = translations.get(lang) or {}
+    cur.update({str(k): str(v) for k, v in incoming.items() if isinstance(v, str)})
+    translations[lang] = cur
+    await db.flows.update_one(
+        {"id": fid, "tenant_id": current["tenant_id"]},
+        {"$set": {"translations": translations, "updated_at": now().isoformat()}},
+    )
+    return {"updated": len(incoming), "language": lang}

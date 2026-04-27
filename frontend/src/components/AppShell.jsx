@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, MessageSquare, Send, Users, MessagesSquare, Bot,
   FileText, Workflow, BarChart3, CreditCard, Plug, UserPlus, BookOpen, Settings as SettingsIcon, LogOut,
-  Menu, X, ChevronRight, AlertTriangle, Sparkles
+  Menu, X, ChevronRight, AlertTriangle, Sparkles, Store, Activity
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -15,8 +15,10 @@ const NAV = [
   { to: '/app/chat', label: 'Live Chat', icon: MessagesSquare },
   { to: '/app/auto-replies', label: 'Auto-replies', icon: Bot },
   { to: '/app/flows', label: 'Chatbot Flows', icon: Workflow },
+  { to: '/app/marketplace', label: 'Marketplace', icon: Store },
   { to: '/app/templates', label: 'Templates', icon: FileText },
   { to: '/app/analytics', label: 'Analytics', icon: BarChart3 },
+  { to: '/app/delivery', label: 'Delivery Status', icon: Activity },
   { to: '/app/billing', label: 'Subscription', icon: CreditCard },
   { to: '/app/integrations', label: 'ERP & API', icon: Plug },
   { to: '/app/team', label: 'Team', icon: UserPlus },
