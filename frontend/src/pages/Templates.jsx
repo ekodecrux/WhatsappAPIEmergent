@@ -8,7 +8,7 @@ const CATS = ['MARKETING', 'UTILITY', 'AUTHENTICATION'];
 export default function Templates() {
   const [items, setItems] = useState([]);
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ name: '', category: 'MARKETING', body: '', header: '', footer: '', language: 'en' });
+  const [form, setForm] = useState({ name: '', category: 'MARKETING', body: '', header: '', footer: '', language: 'en', media_url: '', media_type: '' });
 
   const load = async () => { const { data } = await api.get('/whatsapp/templates'); setItems(data); };
   useEffect(() => { load(); }, []);
@@ -19,7 +19,7 @@ export default function Templates() {
       await api.post('/whatsapp/templates', form);
       toast.success('Template saved');
       setOpen(false);
-      setForm({ name: '', category: 'MARKETING', body: '', header: '', footer: '', language: 'en' });
+      setForm({ name: '', category: 'MARKETING', body: '', header: '', footer: '', language: 'en', media_url: '', media_type: '' });
       load();
     } catch { toast.error('Failed'); }
   };
@@ -63,6 +63,11 @@ export default function Templates() {
             {t.header && <div className="mt-3 text-xs font-medium text-zinc-700">{t.header}</div>}
             <div className="mt-2 whitespace-pre-line text-sm text-zinc-700">{t.body}</div>
             {t.footer && <div className="mt-2 text-xs text-zinc-500">{t.footer}</div>}
+            {t.media_url && (
+              <a href={t.media_url} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 rounded-md bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-700 hover:bg-zinc-200">
+                📎 {t.media_type || 'media'}
+              </a>
+            )}
             <div className="mt-3 inline-flex rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-800">approved</div>
           </div>
         ))}
@@ -83,6 +88,27 @@ export default function Templates() {
               <input placeholder="Header (optional)" value={form.header} onChange={(e) => setForm({ ...form, header: e.target.value })} className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" />
               <textarea data-testid="template-body" required placeholder="Body" rows={4} value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" />
               <input placeholder="Footer (optional)" value={form.footer} onChange={(e) => setForm({ ...form, footer: e.target.value })} className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" />
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-[2fr_1fr]">
+                <input
+                  type="url"
+                  placeholder="Media URL (optional — image, PDF, mp3, mp4)"
+                  value={form.media_url}
+                  onChange={(e) => setForm({ ...form, media_url: e.target.value })}
+                  className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm font-mono"
+                />
+                <select
+                  value={form.media_type}
+                  onChange={(e) => setForm({ ...form, media_type: e.target.value })}
+                  disabled={!form.media_url}
+                  className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm disabled:bg-zinc-50"
+                >
+                  <option value="">Auto-detect</option>
+                  <option value="image">Image</option>
+                  <option value="document">Document</option>
+                  <option value="audio">Audio</option>
+                  <option value="video">Video</option>
+                </select>
+              </div>
               <div className="flex justify-end gap-2">
                 <button type="button" onClick={() => setOpen(false)} className="rounded-md border border-zinc-300 px-3 py-2 text-sm">Cancel</button>
                 <button data-testid="template-submit" className="rounded-md bg-green-600 px-3 py-2 text-sm text-white">Save</button>

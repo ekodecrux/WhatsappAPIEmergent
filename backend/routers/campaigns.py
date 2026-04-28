@@ -26,6 +26,30 @@ async def create_campaign(payload: CampaignIn, current=Depends(get_current_user)
     # Normalize recipients
     recipients = [r.strip() for r in payload.recipients if r and r.strip()]
 
+    # Resolve template (optional). If template_id is set and message is blank, derive message from template body.
+    template_doc = None
+    if payload.template_id:
+        template_doc = await db.templates.find_one(
+            {"id": payload.template_id, "tenant_id": current["tenant_id"]},
+            {"_id": 0},
+        )
+        if not template_doc:
+            raise HTTPException(400, "Template not found in your workspace")
+        if not (payload.message or "").strip():
+            composed = "\n\n".join([s for s in [
+                template_doc.get("header"),
+                template_doc.get("body"),
+                template_doc.get("footer"),
+            ] if s])
+            payload.message = composed
+        if (payload.media_url is None) and template_doc.get("media_url"):
+            payload.media_url = template_doc.get("media_url")
+            payload.media_type = template_doc.get("media_type") or "image"
+
+    # Reject completely empty messages (after template resolution + variants check)
+    if not (payload.message or "").strip() and not payload.variants:
+        raise HTTPException(400, "Message is required (provide text, pick a template, or add A/B variants)")
+
     # Prepare variants for A/B testing
     variants_in = [v.model_dump() if hasattr(v, "model_dump") else dict(v) for v in (payload.variants or [])]
     if variants_in:
@@ -46,6 +70,8 @@ async def create_campaign(payload: CampaignIn, current=Depends(get_current_user)
         "message": payload.message,
         "media_url": payload.media_url,
         "media_type": payload.media_type,
+        "template_id": payload.template_id,
+        "template_name": (template_doc or {}).get("name"),
         "variants": variants_in,
         "is_ab_test": bool(variants_in),
         "status": "pending_approval",

@@ -176,6 +176,8 @@ async def create_template(payload: TemplateIn, current=Depends(get_current_user)
         "header": payload.header,
         "footer": payload.footer,
         "language": payload.language,
+        "media_url": payload.media_url,
+        "media_type": payload.media_type,
         "status": "approved",  # auto-approve for sandbox
         "created_at": now().isoformat(),
     }

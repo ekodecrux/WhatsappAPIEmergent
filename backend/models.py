@@ -137,6 +137,8 @@ class TemplateIn(BaseModel):
     header: str | None = None
     footer: str | None = None
     language: str = "en"
+    media_url: str | None = None
+    media_type: str | None = None  # image | document | audio | video
 
 
 # ===== Campaigns =====
@@ -151,11 +153,12 @@ class CampaignVariant(BaseModel):
 class CampaignIn(BaseModel):
     name: str
     credential_id: str
-    message: str
+    message: str = ""  # optional; can be supplied via template_id or A/B variants
     recipients: list[str]  # list of phone numbers in E.164 format
     schedule_at: datetime | None = None
     media_url: str | None = None
     media_type: str | None = None
+    template_id: str | None = None  # optional saved-template lineage
     variants: list[CampaignVariant] = []  # optional A/B test; if empty → single message
 
 

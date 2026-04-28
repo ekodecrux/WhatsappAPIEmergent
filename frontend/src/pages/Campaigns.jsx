@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import api from '../lib/api';
-import { Send, Plus, Play, Pause, X, CheckCircle2, Clock, AlertCircle, RotateCw, Image as ImageIcon, Beaker, Trash2, Zap } from 'lucide-react';
+import { Send, Plus, Play, Pause, X, CheckCircle2, Clock, AlertCircle, RotateCw, Image as ImageIcon, Beaker, Trash2, Zap, FileText, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
 const STATUS_STYLE = {
@@ -22,14 +22,18 @@ export default function Campaigns() {
     variants: [],
   });
   const [variantsOpen, setVariantsOpen] = useState(null); // campaign object for variant report
+  const [templates, setTemplates] = useState([]);
+  const [pickedTemplateId, setPickedTemplateId] = useState('');
 
   const load = async () => {
-    const [c, cr] = await Promise.all([
+    const [c, cr, tpl] = await Promise.all([
       api.get('/campaigns'),
       api.get('/whatsapp/credentials'),
+      api.get('/whatsapp/templates'),
     ]);
     setItems(c.data);
     setCreds(cr.data);
+    setTemplates(tpl.data);
   };
 
   useEffect(() => { load(); const t = setInterval(load, 5000); return () => clearInterval(t); }, []);
@@ -71,11 +75,13 @@ export default function Campaigns() {
         recipients,
         media_url: form.media_url || null,
         media_type: form.media_url ? (form.media_type || 'image') : null,
-        variants,
+        variants: variants.map(({ _templateId, ...v }) => v),
+        template_id: pickedTemplateId || null,
       });
       toast.success('Campaign created — pending approval');
       setOpen(false);
       setForm({ name: '', credential_id: '', message: '', recipientsText: '', media_url: '', media_type: '', variants: [] });
+      setPickedTemplateId('');
       load();
     } catch (e) {
       toast.error(e?.response?.data?.detail || e.message || 'Failed');
@@ -92,6 +98,26 @@ export default function Campaigns() {
   };
   const removeVariant = (i) => setForm(f => ({ ...f, variants: f.variants.filter((_, idx) => idx !== i) }));
   const updateVariant = (i, patch) => setForm(f => ({ ...f, variants: f.variants.map((v, idx) => idx === i ? { ...v, ...patch } : v) }));
+
+  const applyTemplate = (templateId, target = 'main') => {
+    if (!templateId) {
+      setPickedTemplateId('');
+      return;
+    }
+    const t = templates.find(x => x.id === templateId);
+    if (!t) return;
+    // Compose: header + body + footer with newlines
+    const composed = [t.header, t.body, t.footer].filter(Boolean).join('\n\n');
+    if (target === 'main') {
+      setForm(f => ({ ...f, message: composed }));
+      setPickedTemplateId(templateId);
+      toast.success(`Template "${t.name}" applied`);
+    } else if (typeof target === 'number') {
+      // Apply to a specific variant index
+      updateVariant(target, { message: composed, _templateId: templateId });
+      toast.success(`Template applied to variant`);
+    }
+  };
 
   const approve = async (id) => {
     await api.post(`/campaigns/${id}/approve`, { approve: true });
@@ -151,7 +177,17 @@ export default function Campaigns() {
               return (
                 <tr key={c.id} className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50/40">
                   <td className="px-5 py-3.5">
-                    <div className="font-medium text-zinc-900">{c.name}</div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-medium text-zinc-900">{c.name}</span>
+                      {c.template_name && (
+                        <span title={`From template: ${c.template_name}`} className="inline-flex items-center gap-0.5 rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-blue-700">
+                          <FileText className="h-2.5 w-2.5" /> tpl
+                        </span>
+                      )}
+                      {c.media_url && (
+                        <span title={`Media: ${c.media_type || 'attached'}`} className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-700">📎</span>
+                      )}
+                    </div>
                     <div className="mt-0.5 max-w-md truncate text-xs text-zinc-500">{c.message}</div>
                   </td>
                   <td className="px-5 py-3.5">
@@ -225,9 +261,43 @@ export default function Campaigns() {
                 </div>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-zinc-700">Message</label>
-                <textarea data-testid="campaign-message" required={form.variants.length === 0} rows={3} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" placeholder="Hi {{name}}, …" />
-                <div className="mt-1 text-[10px] text-zinc-500">When A/B variants are added, this is used as fallback only.</div>
+                <div className="mb-1 flex items-center justify-between">
+                  <label className="text-xs font-medium text-zinc-700">Message</label>
+                  <div className="flex items-center gap-1.5">
+                    {templates.length > 0 ? (
+                      <select
+                        data-testid="campaign-template-picker"
+                        value={pickedTemplateId}
+                        onChange={(e) => applyTemplate(e.target.value, 'main')}
+                        className="max-w-[220px] truncate rounded-md border border-zinc-300 bg-white px-2 py-1 text-[11px]"
+                      >
+                        <option value="">Use a saved template…</option>
+                        {templates.map(t => (
+                          <option key={t.id} value={t.id}>
+                            {t.name} {t.category ? `· ${t.category}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <a
+                        href="/app/templates"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600 hover:bg-zinc-50"
+                      >
+                        <FileText className="h-3 w-3" /> Create a template
+                      </a>
+                    )}
+                  </div>
+                </div>
+                <textarea data-testid="campaign-message" required={form.variants.length === 0} rows={4} value={form.message} onChange={(e) => { setForm({ ...form, message: e.target.value }); setPickedTemplateId(''); }} className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" placeholder="Hi {{name}}, ..." />
+                <div className="mt-1 flex items-center justify-between text-[10px] text-zinc-500">
+                  <span>
+                    Use <code className="rounded bg-zinc-100 px-1">{'{{name}}'}</code>, <code className="rounded bg-zinc-100 px-1">{'{{phone}}'}</code> for personalization.
+                    {pickedTemplateId && <span className="ml-2 inline-flex items-center gap-0.5 text-wa-dark"><Sparkles className="h-2.5 w-2.5" /> from template</span>}
+                  </span>
+                  <span>{form.variants.length > 0 ? 'Used as fallback only when A/B variants are set' : `${(form.message || '').length} chars`}</span>
+                </div>
               </div>
 
               {/* Media attachment */}
@@ -277,7 +347,18 @@ export default function Campaigns() {
                         </div>
                         <button type="button" onClick={() => removeVariant(i)} className="rounded-md p-1 text-zinc-500 hover:bg-red-50 hover:text-red-700"><Trash2 className="h-3 w-3" /></button>
                       </div>
-                      <textarea rows={2} value={v.message} onChange={(e) => updateVariant(i, { message: e.target.value })} className="mt-1.5 w-full rounded-md border border-zinc-300 px-2 py-1 text-xs" placeholder="Variant message text…" />
+                      {templates.length > 0 && (
+                        <select
+                          data-testid={`variant-template-picker-${i}`}
+                          value={v._templateId || ''}
+                          onChange={(e) => applyTemplate(e.target.value, i)}
+                          className="mt-1.5 w-full truncate rounded-md border border-zinc-300 bg-white px-2 py-1 text-[10px]"
+                        >
+                          <option value="">Use a template…</option>
+                          {templates.map(t => <option key={t.id} value={t.id}>{t.name}{t.category ? ` · ${t.category}` : ''}</option>)}
+                        </select>
+                      )}
+                      <textarea rows={2} value={v.message} onChange={(e) => updateVariant(i, { message: e.target.value, _templateId: '' })} className="mt-1.5 w-full rounded-md border border-zinc-300 px-2 py-1 text-xs" placeholder="Variant message text…" />
                     </div>
                   ))}
                 </div>
