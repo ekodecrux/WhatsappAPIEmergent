@@ -41,7 +41,7 @@ export default function Integrations() {
   const [keyForm, setKeyForm] = useState({ name: '' });
   const [hookForm, setHookForm] = useState({
     name: '', url: '',
-    events: ['message.received', 'message.status'],
+    events: [],
     secret: '',
   });
   const [generated, setGenerated] = useState(null);
@@ -88,7 +88,7 @@ export default function Integrations() {
       await api.post('/integrations/webhooks', hookForm);
       toast.success('Webhook saved');
       setOpenHook(false);
-      setHookForm({ name: '', url: '', events: ['message.received', 'message.status'], secret: '' });
+      setHookForm({ name: '', url: '', events: [], secret: '' });
       load();
     } catch (e) { toast.error(e?.response?.data?.detail || 'Failed'); }
   };

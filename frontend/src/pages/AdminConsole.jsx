@@ -472,12 +472,12 @@ function MiniBarChart({ data, valueKey, color = '#075E54', formatY = (v) => v })
     <div className="flex h-32 items-end gap-1">
       {data.map((d, i) => {
         const v = d[valueKey] || 0;
-        const h = Math.max(2, (v / max) * 100);
+        const px = Math.max(2, Math.round((v / max) * 128));
         return (
-          <div key={i} className="group relative flex-1">
+          <div key={i} className="group relative flex flex-1 items-end self-stretch">
             <div
               className="w-full rounded-sm transition-all hover:opacity-80"
-              style={{ height: `${h}%`, backgroundColor: color }}
+              style={{ height: `${px}px`, backgroundColor: color }}
               title={`${d.date}: ${formatY(v)}`}
             />
             <div className="pointer-events-none absolute -top-7 left-1/2 hidden -translate-x-1/2 whitespace-nowrap rounded bg-zinc-900 px-1.5 py-0.5 text-[10px] text-white group-hover:block">

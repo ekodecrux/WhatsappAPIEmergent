@@ -93,7 +93,7 @@ async def top_tenants(_=Depends(require_superadmin), metric: str = "messages", l
             r["value"] = round(r["value"], 2)
     elif metric == "wallet_balance":
         cur = db.tenants.find(
-            {"is_platform": {"$ne": True}, "wallet_balance_inr": {"$gt": 0}},
+            {"is_platform": {"$ne": True}, "is_active": True, "wallet_balance_inr": {"$gt": 0}},
             {"_id": 0, "id": 1, "company_name": 1, "wallet_balance_inr": 1},
         ).sort("wallet_balance_inr", -1).limit(limit)
         items = await cur.to_list(limit)

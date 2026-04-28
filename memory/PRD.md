@@ -91,10 +91,31 @@ Create a complete end-to-end WhatsApp SaaS subscription platform that integrates
 - **A/B campaigns** — variants[] with weights summing ≤100%; deterministic weighted RNG per recipient; per-variant counters + winner badge in results modal.
 - **Rich media attachments** — `media_url` + `media_type` (image/document/audio/video) on /send, /conversations/{id}/send, and /campaigns (top-level + per-variant). Provider-aware: Twilio uses `media_url[]`, Meta uses native typed payload with caption. Twilio inbound webhook captures `MediaUrl0`.
 
+## Implemented (this session — Apr 2026 part 3 — P1 ERP Passthrough + P2 Admin Analytics)
+- **Real ERP API Passthrough** — wallet-billed external send endpoints with HMAC-signed outbound webhooks:
+  - `POST /api/integrations/erp/send-message` — wallet-billed single send (auto-refund on provider failure), persists to chat history, dispatches `message.sent` / `message.failed` webhook
+  - `POST /api/integrations/erp/send-bulk` — up to 100 recipients with per-recipient `{{variable}}` substitution
+  - `POST /api/integrations/erp/send-template` — saved-template send with variable substitution + media inheritance
+  - `GET /api/integrations/erp/messages?phone=&limit=` — fetch conversation history
+  - `GET /api/integrations/erp/balance` — wallet balance + billing mode for the tenant
+  - `POST /api/integrations/webhooks/{id}/test` — synchronous signed test ping for webhook URLs
+  - `GET /api/integrations/webhooks/{id}/deliveries` — delivery activity log (status_code, duration_ms, request/response bodies)
+  - HMAC-SHA256 signature header `X-Wabridge-Signature-256` for all outbound webhooks
+  - Per-key rate limiting (default 120 req/min) with TTL-indexed bucket counter
+  - Twilio + Meta inbound webhook handlers also dispatch `message.received` and `message.status` events
+  - Frontend: full revamp of `Integrations.jsx` with 4 tabs (API keys / Webhooks / Activity / Docs), live ping button, deliveries log, in-app docs panel with curl examples
+- **Super Admin Analytics** — `/api/admin/analytics/*`:
+  - `GET /timeseries?days=N` — daily series of new_tenants / messages / topup revenue / wallet cost
+  - `GET /top-tenants?metric=messages|revenue|wallet_balance&limit=N` — leaderboards
+  - `GET /funnel` — total/trial/paid/suspended/active_7d/churn metrics + trial→paid % + 7d activation %
+  - `GET /message-mix?days=N` — outbound status breakdown (sent/delivered/read/failed/queued)
+  - Frontend: new "Analytics" tab in Super Admin Console with daily bar charts, KPI cards, conversion funnel, top tenants leaderboard with metric switching, status mix bars, range buttons (7/30/90d)
+
 ## Backlog
 - **P1**:
   - Bulk-translate flows (1 click → 5 languages)
   - Tenant impersonation ("View as tenant X" for super admin)
+  - Custom domain mapping for tenant white-labeling
 - **P2**:
   - Lead scoring history charts
   - DRY inbound handlers (twilio_inbound + meta_webhook_inbound share ~80%)

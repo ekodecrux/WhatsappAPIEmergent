@@ -96,8 +96,9 @@ async def dispatch_event(db, tenant_id: str, event: str, payload: dict) -> int:
         return 0
     if not hooks:
         return 0
-    # Run all deliveries concurrently but don't await caller-side
-    asyncio.gather(*[_deliver_one(db, h, event, payload) for h in hooks], return_exceptions=True)
+    # Schedule deliveries as tasks so they survive past the request scope
+    for h in hooks:
+        asyncio.create_task(_deliver_one(db, h, event, payload))
     return len(hooks)
 
 

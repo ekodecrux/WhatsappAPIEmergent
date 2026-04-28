@@ -111,8 +111,6 @@ async def test_webhook(wid: str, current=Depends(get_current_user)):
         raise HTTPException(404, "Webhook not found")
     return await deliver_test(db, hook, "test.ping",
                               {"company": current.get("tenant_id"), "by": current.get("email")})
-
-
 @router.get("/webhooks/{wid}/deliveries")
 async def list_deliveries(wid: str, current=Depends(get_current_user), limit: int = 50):
     hook = await db.erp_webhooks.find_one({"id": wid, "tenant_id": current["tenant_id"]}, {"_id": 0})
@@ -344,7 +342,7 @@ async def erp_send_template(payload: ErpTemplateIn, ctx=Depends(get_tenant_from_
     tenant = ctx["tenant"]
     tpl = await db.templates.find_one({"id": payload.template_id, "tenant_id": tenant["id"]}, {"_id": 0})
     if not tpl:
-        raise HTTPException(404, "Template not found")
+        raise HTTPException(400, "Template not found")
     cred = await _resolve_credential(tenant["id"], payload.credential_id)
     body = _substitute(tpl.get("body") or "", payload.variables)
     if not payload.to_phone.startswith("+"):
