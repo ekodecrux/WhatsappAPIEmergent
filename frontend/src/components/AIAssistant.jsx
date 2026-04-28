@@ -169,7 +169,8 @@ export default function AIAssistant() {
                     const Icon = ACTION_ICONS[m.action.kind] || Wand2;
                     return (
                       <button
-                        data-testid={`ai-action-${m.action.kind}`}
+                        data-testid="ai-action-button"
+                        data-action-kind={m.action.kind}
                         onClick={() => runAction(m.action)}
                         className="ml-1 inline-flex w-fit items-center gap-1.5 rounded-md border border-wa-light/40 bg-gradient-to-r from-wa-dark/5 to-wa-mid/5 px-2.5 py-1.5 text-xs font-medium text-wa-dark hover:bg-wa-dark/10"
                       >
@@ -178,7 +179,7 @@ export default function AIAssistant() {
                     );
                   })()}
                   {m.type === 'ticket' && m.ticket_id && (
-                    <button onClick={() => { navigate('/app/support'); setOpen(false); }} className="ml-1 inline-flex w-fit items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium hover:bg-zinc-50">
+                    <button data-testid="ai-view-ticket" onClick={() => { navigate('/app/support'); setOpen(false); }} className="ml-1 inline-flex w-fit items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium hover:bg-zinc-50">
                       <LifeBuoy className="h-3 w-3" /> View ticket #{m.ticket_id.slice(0, 8)}
                     </button>
                   )}

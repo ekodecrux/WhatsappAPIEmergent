@@ -164,6 +164,10 @@ async def update_tenant(tid: str, payload: TenantUpdateIn, current=Depends(requi
             upd["suspended_at"] = now().isoformat()
             upd["suspended_by"] = current["id"]
     if payload.extend_trial_days:
+        if payload.extend_trial_days < 1 or payload.extend_trial_days > 90:
+            raise HTTPException(400, "extend_trial_days must be between 1 and 90")
+        if t.get("plan") != "trial" and not (payload.plan == "trial"):
+            raise HTTPException(400, "extend_trial_days only applies to trial plans")
         # parse current trial_end_date
         cur_end = t.get("trial_end_date")
         try:
