@@ -1,0 +1,47 @@
+{
+  "summary": "Iteration 7 (WhatsApp credentials Meta validation, Twilio sandbox helper, test-send, Meta webhooks) tested end-to-end. Created /app/backend/tests/test_iteration7_whatsapp_send.py with 17 pytest cases — ALL 17 PASS. Backend coverage: Meta Cloud invalid token rejected with 400 'Meta credentials invalid: Invalid OAuth access token - Cannot parse access token' (no longer silent-accept); missing access_token/phone_number_id rejected 400 with both keys mentioned; unsupported provider rejected (400/422); /whatsapp/sandbox-info returns sandbox_phone='+14155238886', join_keyword, instructions, console_url, requires auth; /whatsapp/test-send rejects malformed phone (no +) with 400 mentioning E.164, persists message in db.messages even on Twilio failure, returns hint field on failure; /whatsapp/webhook/meta GET returns hub.challenge text/plain for matching token, 403 for wrong token; /whatsapp/webhook/meta POST with synthetic Meta inbound payload (planted meta_cloud cred via direct mongo) creates conversation+inbound message, runs sentiment+suggestion+language detection, triggers flow_engine; statuses payload updates db.messages.status by message_id. Regression PASS: /flows/_languages, /marketplace/templates, /dashboard/delivery (totals nested), /whatsapp/credentials list, /whatsapp/simulate-inbound. Frontend coverage: login as demo@test.com OK; /app/whatsapp loads; sandbox-helper banner visible with +14155238886 + 4-step opt-in instructions ('Open Twilio Console…', 'From recipient WhatsApp send join…', 'Twilio replies confirming…', 'Use Test send…'); each cred row has [data-testid=test-send-{id}] (Zap) AND [data-testid=simulate-{id}]; clicking Test send opens modal with [data-testid=test-to], [data-testid=test-text], [data-testid=test-send-submit]; submit shows red [data-testid=test-result] block with provider error 'Provider rejected the message — Authentication Error' on failure; Meta Cloud form shows blue info box with 'Where to find these? In Meta Business Suite → Business Settings → System Users…' and updated placeholders 'Permanent access token (EAA…, ~200+ chars)' and 'Phone number ID (15-17 digit number)'. Backend now returns sharp actionable error instead of silent acceptance — the user-reported 'Failed to add credentials' is now backed by a real 400 detail surfaced by toast.error(e?.response?.data?.detail).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/whatsapp/credentials (meta_cloud)", "issue": "When Meta Graph validation succeeds, whatsapp_from is set to '+<display_phone_number>' but on failure path it is empty. Defensive: store the original phone_number_id format too."},
+      {"endpoint": "POST /api/whatsapp/test-send", "issue": "Always returns HTTP 200 even when provider rejects (success=false). Frontend handles via response body, but a stricter API would map provider failure to 4xx/5xx for clean curl checks. Acceptable trade-off because hint+error are exposed."},
+      {"endpoint": "POST /api/whatsapp/webhook/meta", "issue": "Endpoint is unauthenticated by design (Meta requires it). However it does NOT verify the X-Hub-Signature-256 header against META_APP_SECRET — an attacker could spoof inbound messages for any tenant whose phone_number_id is known/guessed. Recommend adding HMAC signature verification in production."},
+      {"endpoint": "GET /api/whatsapp/sandbox-info", "issue": "join_keyword falls back to env TWILIO_SANDBOX_KEYWORD; if unset returns instructional text inside the keyword field which couples display logic with data. Consider adding a separate is_keyword_known flag."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "WhatsApp Setup — Test send modal", "issues": ["Failure block ('Provider rejected the message — Authentication Error') shows the raw provider error verbatim. For Meta auth failures the long Meta error string ('Cannot parse access token') would render as-is which can be jarring. Consider word-break/truncation styles."]},
+      {"screen": "WhatsApp Setup — sandbox-helper banner", "issues": ["Banner persists even after the user has successfully opted-in. There is no dismiss/hide control and no way to mark a sandbox cred as 'opted-in confirmed'. Minor UX nit."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration7_whatsapp_send.py",
+    "/app/test_reports/pytest/iter7_results.xml"
+  ],
+  "action_items": [
+    "(Optional, security) Add X-Hub-Signature-256 HMAC verification on POST /whatsapp/webhook/meta using META_APP_SECRET to prevent spoofed inbound messages.",
+    "(Optional, UX) Add dismiss/hide control to sandbox-helper banner once user confirms their phone is opted-in.",
+    "(Optional, polish) When Meta validation fails, the toast shows the full detail; consider line-breaking long Meta error strings for readability."
+  ],
+  "critical_code_review_comments": [
+    "routers/whatsapp.py meta_webhook_inbound is unauthenticated and trusts metadata.phone_number_id to look up the tenant — without HMAC validation any actor knowing a tenant's PNID can inject inbound messages, statuses, and trigger AI / flow_engine work. HIGH for production deployment.",
+    "helpers.send_whatsapp_via_meta uses synchronous requests.post inside an async router (wrapped via run_sync). OK functionally, but consider httpx.AsyncClient for consistency with the rest of FastAPI stack.",
+    "routers/whatsapp.py add_credential stores access_token in BOTH auth_token_enc AND access_token_enc for meta_cloud. send_whatsapp() reads from auth_token_enc. The duplicate access_token_enc is dead storage and can drift. Drop one or document the canonical field.",
+    "routers/whatsapp.py test_send returns HTTP 200 with success=false on provider failure. While the frontend handles this, it makes pytest-style assertions brittle and complicates ERP integrations consuming the same endpoint pattern.",
+    "routers/whatsapp.py twilio_inbound and meta_webhook_inbound duplicate ~80% of logic (upsert conv, sentiment, suggestion, language detect, persist message, broadcast WS, trigger flow). Extract into helpers.handle_inbound_message(tenant_id, cred, customer_phone, body, msg_id) to DRY up.",
+    "frontend WhatsAppSetup.jsx — toast.error fallback string is 'Failed to add credentials' which is the original generic message the user complained about. With backend now returning detailed errors this is fine, but ensure axios interceptor doesn't strip detail on non-2xx."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration7_whatsapp_send.py (NEW — 17 pytest cases, 100% pass)"
+  ],
+  "success_rate": {"backend": "100% — 17/17 pass (Meta validation, sandbox-info, test-send, Meta webhook GET+POST, regression)", "frontend": "100% — sandbox-helper banner, test-send modal flow, test-result block, Meta info box and placeholders all verified visually"},
+  "test_credentials": "demo@test.com / demo1234 (admin Demo Inc tenant)",
+  "seed_data_creation": "Tests plant a synthetic meta_cloud cred (id='TEST_iter7_meta_cred', phone_number_id='TEST_PNID_iter7') directly in mongo for webhook tests; cleaned up by fixture teardown. TEST_iter7_* prefixed creds also cleaned up via DELETE.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && pytest tests/test_iteration7_whatsapp_send.py -v. Backend .env is loaded inside the test file (load_dotenv) to pick up MONGO_URL/DB_NAME/META_VERIFY_TOKEN — important because conftest only loads frontend/.env. The Meta webhook tests directly insert/delete docs in mongo (whatsapp_credentials, messages) using DB_NAME='whatsapp_saas'. Frontend testids confirmed: sandbox-helper, test-send-{cred_id}, simulate-{cred_id}, test-to, test-text, test-send-submit, test-result, provider-meta_cloud, meta-token, meta-phone-id. Public URL: https://messaging-vault.preview.emergentagent.com.",
+  "rca of the issue": "Original user reports: (1) 'Failed to add credentials' on Meta Cloud submit was caused by previous backend silently accepting any token then failing later — now /whatsapp/credentials calls Meta Graph GET /{phone_number_id} via validate_meta_credentials before insert, and HTTPException(400) bubbles a precise detail like 'Meta credentials invalid: Invalid OAuth access token - Cannot parse access token' which the frontend toast (toast.error(e?.response?.data?.detail || 'Failed to add credentials')) now surfaces verbatim. (2) Twilio sandbox not delivering real-time messages was caused by recipient not opting-in — Twilio sandbox returns 63007/63015/63016/63018 codes which test-send now maps to a clear hint string 'Recipient has not joined the Twilio sandbox. From the recipient's WhatsApp, send 'join <your-keyword>' to +14155238886.' plus the new sandbox-helper banner on /app/whatsapp instructs users about the opt-in dance. send_whatsapp() unified dispatcher correctly routes meta_cloud creds to send_whatsapp_via_meta and twilio*/twilio_sandbox creds to send_whatsapp_via_twilio — verified through test-send modal which reported a Meta API auth error ('Provider rejected the message — Authentication Error') for an ExpertAid (meta_cloud) cred whose token has expired."
+}

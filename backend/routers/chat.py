@@ -8,7 +8,7 @@ from models import (
 )
 from helpers import (
     get_current_user, decrypt_text, audit_log,
-    send_whatsapp_via_twilio, ai_suggest_reply, update_usage, run_sync,
+    send_whatsapp, ai_suggest_reply, update_usage, run_sync,
 )
 from ws_manager import ws_manager
 
@@ -71,9 +71,7 @@ async def send_in_conversation(conv_id: str, payload: SendMessageIn, current=Dep
     if not cred:
         raise HTTPException(404, "Credential not found")
 
-    sid = decrypt_text(cred["account_sid_enc"])
-    tok = decrypt_text(cred["auth_token_enc"])
-    result = await run_sync(send_whatsapp_via_twilio, sid, tok, cred["whatsapp_from"], conv["customer_phone"], payload.content)
+    result = await run_sync(send_whatsapp, cred, conv["customer_phone"], payload.content)
 
     msg_doc = {
         "id": uid(),

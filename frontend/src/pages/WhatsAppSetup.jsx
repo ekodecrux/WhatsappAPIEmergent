@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '../lib/api';
 import {
-  Plus, ShieldCheck, Phone, Trash2, Lock, X, Beaker, Server, AlertCircle, Send
+  Plus, ShieldCheck, Phone, Trash2, Lock, X, Beaker, Server, AlertCircle, Send, Zap, Info, ExternalLink, MessageSquare
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -20,10 +20,20 @@ export default function WhatsAppSetup() {
   const [simPhone, setSimPhone] = useState('+919876543210');
   const [simText, setSimText] = useState('Hi, I would like a quote for 50 units. Please share details.');
   const [simBusyId, setSimBusyId] = useState(null);
+  const [sandboxInfo, setSandboxInfo] = useState(null);
+  const [testModal, setTestModal] = useState(null); // {cred}
+  const [testTo, setTestTo] = useState('+91');
+  const [testText, setTestText] = useState('Hello — this is a test message from wabridge.');
+  const [testBusy, setTestBusy] = useState(false);
+  const [testResult, setTestResult] = useState(null);
 
   const load = async () => {
-    const { data } = await api.get('/whatsapp/credentials');
-    setItems(data);
+    const [{ data: creds }, { data: sb }] = await Promise.all([
+      api.get('/whatsapp/credentials'),
+      api.get('/whatsapp/sandbox-info').catch(() => ({ data: null })),
+    ]);
+    setItems(creds);
+    setSandboxInfo(sb);
   };
 
   useEffect(() => { load(); }, []);
@@ -65,6 +75,33 @@ export default function WhatsAppSetup() {
     } finally { setSimBusyId(null); }
   };
 
+  const openTest = (c) => {
+    setTestModal({ cred: c });
+    setTestResult(null);
+  };
+
+  const runTest = async () => {
+    if (!testModal?.cred) return;
+    if (!testTo.startsWith('+') || testTo.length < 8) {
+      toast.error('Enter recipient in E.164 format, e.g. +919876543210');
+      return;
+    }
+    setTestBusy(true);
+    setTestResult(null);
+    try {
+      const { data } = await api.post('/whatsapp/test-send', {
+        credential_id: testModal.cred.id,
+        to_phone: testTo,
+        text: testText,
+      });
+      setTestResult(data);
+      if (data.success) toast.success('Test message accepted by provider');
+      else toast.error(data.error || 'Provider rejected the message');
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Test failed');
+    } finally { setTestBusy(false); }
+  };
+
   return (
     <div className="mx-auto max-w-7xl space-y-6 p-6">
       <div className="flex flex-col items-start justify-between gap-3 md:flex-row md:items-center">
@@ -88,6 +125,27 @@ export default function WhatsAppSetup() {
           <span className="font-medium text-zinc-900">Tokens are AES-256 encrypted</span> with a tenant-derived key. Decryption only happens in-memory at send time.
         </div>
       </div>
+
+      {/* Twilio Sandbox opt-in helper — required for real WhatsApp delivery */}
+      {sandboxInfo && items.some(c => c.provider === 'twilio_sandbox') && (
+        <div className="rounded-md border border-amber-200 bg-amber-50/60 p-4" data-testid="sandbox-helper">
+          <div className="flex items-start gap-3">
+            <Info className="mt-0.5 h-4 w-4 text-amber-700" />
+            <div className="flex-1 text-sm text-amber-900">
+              <div className="font-medium">Twilio Sandbox requires recipient opt-in</div>
+              <p className="mt-1 text-amber-800">
+                For sandbox messages to actually be delivered, the recipient must first send a join code from <strong>their personal WhatsApp</strong> to <span className="font-mono">{sandboxInfo.sandbox_phone}</span>.
+              </p>
+              <ol className="mt-2 list-inside list-decimal space-y-0.5 text-xs text-amber-800">
+                <li>Open <a href={sandboxInfo.console_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 underline">Twilio Console → Try WhatsApp <ExternalLink className="h-3 w-3" /></a> to find your join keyword (looks like <span className="font-mono">join my-keyword</span>).</li>
+                <li>From the recipient's WhatsApp, message <span className="font-mono">{sandboxInfo.sandbox_phone}</span> with that exact text.</li>
+                <li>Twilio replies confirming opt-in. The recipient is then live for 72h.</li>
+                <li>Use the <Zap className="inline h-3 w-3" /> Test send button next to a connection to verify end-to-end delivery.</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* List */}
       <div className="overflow-hidden rounded-md border border-zinc-200 bg-white">
@@ -122,10 +180,18 @@ export default function WhatsAppSetup() {
             </div>
             <div className="col-span-1 flex items-center justify-end gap-1">
               <button
+                data-testid={`test-send-${c.id}`}
+                onClick={() => openTest(c)}
+                title="Send a real test message to verify delivery"
+                className="rounded-md p-1.5 text-zinc-500 hover:bg-green-50 hover:text-green-700"
+              >
+                <Zap className="h-4 w-4" />
+              </button>
+              <button
                 data-testid={`simulate-${c.id}`}
                 onClick={() => simulate(c.id)}
                 disabled={simBusyId === c.id}
-                title="Simulate inbound message"
+                title="Simulate inbound message (no real WhatsApp needed)"
                 className="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-50"
               >
                 <Send className="h-4 w-4" />
@@ -216,9 +282,17 @@ export default function WhatsAppSetup() {
 
               {provider === 'meta_cloud' && (
                 <>
-                  <input data-testid="meta-token" required value={form.access_token} onChange={(e) => setForm({ ...form, access_token: e.target.value })} className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" placeholder="Permanent access token (EAA…)" />
-                  <input data-testid="meta-phone-id" required value={form.phone_number_id} onChange={(e) => setForm({ ...form, phone_number_id: e.target.value })} className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" placeholder="Phone number ID" />
-                  <input value={form.business_account_id} onChange={(e) => setForm({ ...form, business_account_id: e.target.value })} className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" placeholder="Business account ID (optional)" />
+                  <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
+                    <div className="flex items-start gap-2">
+                      <Info className="mt-0.5 h-3.5 w-3.5 text-blue-700" />
+                      <div>
+                        <strong>Where to find these?</strong> In Meta Business Suite → Business Settings → System Users → generate a permanent token with <span className="font-mono">whatsapp_business_messaging</span> + <span className="font-mono">whatsapp_business_management</span> scopes. Phone Number ID is in WhatsApp → API Setup. We'll verify these against Meta Graph API before saving.
+                      </div>
+                    </div>
+                  </div>
+                  <input data-testid="meta-token" required value={form.access_token} onChange={(e) => setForm({ ...form, access_token: e.target.value })} className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm font-mono" placeholder="Permanent access token (EAA…, ~200+ chars)" />
+                  <input data-testid="meta-phone-id" required value={form.phone_number_id} onChange={(e) => setForm({ ...form, phone_number_id: e.target.value })} className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm font-mono" placeholder="Phone number ID (15-17 digit number)" />
+                  <input value={form.business_account_id} onChange={(e) => setForm({ ...form, business_account_id: e.target.value })} className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm font-mono" placeholder="Business account ID (optional)" />
                 </>
               )}
 
@@ -229,6 +303,70 @@ export default function WhatsAppSetup() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Test send modal */}
+      {testModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-md border border-zinc-200 bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="font-display text-lg font-semibold inline-flex items-center gap-2">
+                <Zap className="h-4 w-4 text-green-600" /> Test send · {testModal.cred.name}
+              </h3>
+              <button onClick={() => setTestModal(null)}><X className="h-4 w-4" /></button>
+            </div>
+            <p className="text-xs text-zinc-600">Sends a real WhatsApp message via {testModal.cred.provider.replace('_', ' ')}. The recipient must be reachable for your provider (sandbox = opted-in only; Meta Cloud = any number once your business is verified).</p>
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Recipient (E.164)</label>
+                <input
+                  data-testid="test-to"
+                  value={testTo}
+                  onChange={(e) => setTestTo(e.target.value)}
+                  placeholder="+919876543210"
+                  className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm font-mono"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Message</label>
+                <textarea
+                  data-testid="test-text"
+                  rows={3}
+                  value={testText}
+                  onChange={(e) => setTestText(e.target.value)}
+                  className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+            {testResult && (
+              <div className={`mt-4 rounded-md border p-3 text-xs ${testResult.success ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-200 bg-red-50 text-red-800'}`} data-testid="test-result">
+                <div className="font-medium">{testResult.success ? 'Provider accepted the message' : 'Provider rejected the message'}</div>
+                {testResult.success && <div className="mt-1 font-mono">Status: {testResult.status} · ID: {testResult.sid?.slice(0, 24)}…</div>}
+                {!testResult.success && (
+                  <>
+                    <div className="mt-1">{testResult.error}</div>
+                    {testResult.hint && (
+                      <div className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-amber-900">
+                        <strong>How to fix:</strong> {testResult.hint}
+                      </div>
+                    )}
+                  </>
+                )}
+                <div className="mt-2 text-[11px] text-zinc-600">Tip: open the <strong>Delivery Status</strong> page after a few seconds to see the actual delivered/failed status as Twilio reports it.</div>
+              </div>
+            )}
+            <div className="mt-5 flex justify-end gap-2">
+              <button onClick={() => setTestModal(null)} className="rounded-md border border-zinc-300 px-3 py-2 text-sm">Close</button>
+              <button
+                data-testid="test-send-submit"
+                onClick={runTest}
+                disabled={testBusy}
+                className="inline-flex items-center gap-1.5 rounded-md bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-wa-mid disabled:opacity-50"
+              >
+                {testBusy ? 'Sending…' : <><MessageSquare className="h-3.5 w-3.5" /> Send test</>}
+              </button>
+            </div>
           </div>
         </div>
       )}

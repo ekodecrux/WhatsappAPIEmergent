@@ -5,7 +5,7 @@ from server import db
 from models import ApiKeyIn, WebhookIn, ErpSendMessageIn, uid, now
 from helpers import (
     get_current_user, generate_api_key, hash_api_key, audit_log,
-    get_tenant_from_api_key, decrypt_text, send_whatsapp_via_twilio, update_usage, mask,
+    get_tenant_from_api_key, decrypt_text, send_whatsapp, update_usage, mask,
 )
 
 router = APIRouter(prefix="/integrations", tags=["integrations"])
@@ -93,9 +93,7 @@ async def erp_send_message(payload: ErpSendMessageIn, ctx=Depends(get_tenant_fro
     if not cred:
         raise HTTPException(400, "No WhatsApp credential configured")
 
-    sid = decrypt_text(cred["account_sid_enc"])
-    tok = decrypt_text(cred["auth_token_enc"])
-    res = send_whatsapp_via_twilio(sid, tok, cred["whatsapp_from"], payload.to_phone, payload.message)
+    res = send_whatsapp(cred, payload.to_phone, payload.message)
     await update_usage(tenant["id"], "messages_sent", 1)
     await update_usage(tenant["id"], "api_calls", 1)
     return res

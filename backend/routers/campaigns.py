@@ -8,7 +8,7 @@ from server import db
 from models import CampaignIn, CampaignApprove, uid, now
 from helpers import (
     get_current_user, decrypt_text, audit_log,
-    send_whatsapp_via_twilio, update_usage, run_sync,
+    send_whatsapp, update_usage, run_sync,
 )
 
 router = APIRouter(prefix="/campaigns", tags=["campaigns"])
@@ -118,9 +118,6 @@ async def _run_campaign(cid: str):
     cred = await db.whatsapp_credentials.find_one({"id": c["credential_id"]}, {"_id": 0})
     if not cred:
         return
-    sid = decrypt_text(cred["account_sid_enc"])
-    tok = decrypt_text(cred["auth_token_enc"])
-
     sent = c.get("sent_count", 0)
     delivered = c.get("delivered_count", 0)
     failed = c.get("failed_count", 0)
@@ -134,7 +131,7 @@ async def _run_campaign(cid: str):
         if cc and cc.get("status") in ("paused", "rejected"):
             break
 
-        result = await run_sync(send_whatsapp_via_twilio, sid, tok, cred["whatsapp_from"], phone, c["message"])
+        result = await run_sync(send_whatsapp, cred, phone, c["message"])
         sent += 1
         if result.get("success"):
             delivered += 1

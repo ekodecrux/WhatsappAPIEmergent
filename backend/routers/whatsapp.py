@@ -9,8 +9,9 @@ from server import db
 from models import CredentialIn, CredentialOut, TemplateIn, SendMessageIn, uid, now
 from helpers import (
     get_current_user, encrypt_text, decrypt_text, mask, audit_log,
-    send_whatsapp_via_twilio, validate_twilio_credentials, update_usage,
+    send_whatsapp, validate_twilio_credentials, update_usage,
     ai_suggest_reply, ai_analyze_sentiment, run_sync,
+    validate_meta_credentials,
 )
 from ws_manager import ws_manager
 
@@ -24,6 +25,7 @@ async def add_credential(payload: CredentialIn, current=Depends(get_current_user
         raise HTTPException(400, "Unsupported provider")
 
     is_valid = True
+    meta_phone_display = ""
     if payload.provider == "twilio_sandbox":
         # Use platform's Twilio sandbox; no user creds required
         sid = os.environ["TWILIO_ACCOUNT_SID"]
@@ -32,14 +34,20 @@ async def add_credential(payload: CredentialIn, current=Depends(get_current_user
     elif payload.provider == "twilio":
         if not (payload.account_sid and payload.auth_token and payload.whatsapp_from):
             raise HTTPException(400, "Twilio requires account_sid, auth_token and whatsapp_from")
-        is_valid = validate_twilio_credentials(payload.account_sid, payload.auth_token)
+        is_valid = await run_sync(validate_twilio_credentials, payload.account_sid, payload.auth_token)
         if not is_valid:
             raise HTTPException(400, "Twilio credentials validation failed")
         sid, tok, wfrom = payload.account_sid, payload.auth_token, payload.whatsapp_from
     else:  # meta_cloud
         if not (payload.access_token and payload.phone_number_id):
             raise HTTPException(400, "Meta Cloud requires access_token and phone_number_id")
-        sid, tok, wfrom = "", payload.access_token, ""
+        verify = await run_sync(validate_meta_credentials, payload.access_token, payload.phone_number_id)
+        if not verify.get("success"):
+            raise HTTPException(400, f"Meta credentials invalid: {verify.get('error', 'verification failed')}")
+        meta_phone_display = verify.get("display_phone_number") or ""
+        sid, tok = "", payload.access_token
+        # Store the verified WhatsApp number so it shows in the UI and can be used for outbound
+        wfrom = (f"+{meta_phone_display}" if meta_phone_display and not meta_phone_display.startswith("+") else meta_phone_display)
 
     cred_id = uid()
     doc = {
@@ -108,10 +116,7 @@ async def _load_credential(tenant_id: str, cred_id: str) -> dict:
 @router.post("/send")
 async def send_one(payload: SendMessageIn, current=Depends(get_current_user)):
     cred = await _load_credential(current["tenant_id"], payload.credential_id)
-    sid = decrypt_text(cred["account_sid_enc"])
-    tok = decrypt_text(cred["auth_token_enc"])
-
-    result = await run_sync(send_whatsapp_via_twilio, sid, tok, cred["whatsapp_from"], payload.to_phone, payload.content)
+    result = await run_sync(send_whatsapp, cred, payload.to_phone, payload.content)
 
     # Track conversation
     conv = await db.conversations.find_one(
@@ -287,9 +292,7 @@ async def twilio_inbound(request: Request):
         keywords = [k.lower() for k in r.get("trigger_keywords", [])]
         body_low = body.lower()
         if r.get("trigger_type") == "always" or any(k in body_low for k in keywords):
-            sid_dec = decrypt_text(cred["account_sid_enc"])
-            tok_dec = decrypt_text(cred["auth_token_enc"])
-            await run_sync(send_whatsapp_via_twilio, sid_dec, tok_dec, cred["whatsapp_from"], customer_phone, r["reply_message"])
+            await run_sync(send_whatsapp, cred, customer_phone, r["reply_message"])
             await db.messages.insert_one({
                 "id": uid(),
                 "conversation_id": conv["id"],
@@ -313,6 +316,194 @@ async def twilio_status(request: Request):
     if sid:
         await db.messages.update_one({"message_id": sid}, {"$set": {"status": status}})
     return {"ok": True}
+
+
+# ============ Meta Cloud webhook ============
+@router.get("/webhook/meta")
+async def meta_webhook_verify(request: Request):
+    """Meta sends a GET with hub.challenge for webhook verification."""
+    qp = request.query_params
+    mode = qp.get("hub.mode")
+    token = qp.get("hub.verify_token")
+    challenge = qp.get("hub.challenge")
+    expected = os.environ.get("META_VERIFY_TOKEN", "wabridge-meta-verify")
+    if mode == "subscribe" and token == expected and challenge:
+        return PlainTextResponse(challenge)
+    return PlainTextResponse("forbidden", status_code=403)
+
+
+@router.post("/webhook/meta")
+async def meta_webhook_inbound(request: Request):
+    """Receive Meta Cloud WhatsApp webhooks (messages + statuses)."""
+    body = await request.json()
+    try:
+        for entry in body.get("entry", []):
+            for ch in entry.get("changes", []):
+                value = ch.get("value", {})
+                metadata = value.get("metadata", {})
+                phone_number_id = metadata.get("phone_number_id")
+                cred = await db.whatsapp_credentials.find_one(
+                    {"phone_number_id": phone_number_id, "provider": "meta_cloud"},
+                    {"_id": 0},
+                )
+                if not cred:
+                    continue
+                tenant_id = cred["tenant_id"]
+
+                # Status updates
+                for st in value.get("statuses", []) or []:
+                    msg_id = st.get("id")
+                    status = st.get("status")
+                    if msg_id and status:
+                        await db.messages.update_one({"message_id": msg_id}, {"$set": {"status": status}})
+
+                # Inbound messages
+                for m in value.get("messages", []) or []:
+                    if m.get("type") != "text":
+                        continue
+                    customer_phone = "+" + m.get("from", "")
+                    text_body = (m.get("text") or {}).get("body", "")
+                    sid = m.get("id", "")
+
+                    conv = await db.conversations.find_one(
+                        {"tenant_id": tenant_id, "customer_phone": customer_phone}, {"_id": 0},
+                    )
+                    if not conv:
+                        conv = {
+                            "id": uid(),
+                            "tenant_id": tenant_id,
+                            "credential_id": cred["id"],
+                            "customer_phone": customer_phone,
+                            "customer_name": customer_phone,
+                            "status": "active",
+                            "unread_count": 1,
+                            "lead_score": 50,
+                            "last_message": text_body,
+                            "last_message_at": now().isoformat(),
+                            "created_at": now().isoformat(),
+                        }
+                        await db.conversations.insert_one(conv)
+                    else:
+                        await db.conversations.update_one(
+                            {"id": conv["id"]},
+                            {"$inc": {"unread_count": 1},
+                             "$set": {"last_message": text_body, "last_message_at": now().isoformat()}},
+                        )
+
+                    sentiment = await run_sync(ai_analyze_sentiment, text_body)
+                    suggestion = await run_sync(ai_suggest_reply, text_body)
+
+                    if not conv.get("preferred_language") and text_body and len(text_body.strip()) >= 3:
+                        try:
+                            from flow_translate import detect_language
+                            lang = await run_sync(detect_language, text_body)
+                            if lang:
+                                await db.conversations.update_one({"id": conv["id"]}, {"$set": {"preferred_language": lang}})
+                                conv["preferred_language"] = lang
+                        except Exception:
+                            pass
+
+                    msg_doc = {
+                        "id": uid(),
+                        "conversation_id": conv["id"],
+                        "tenant_id": tenant_id,
+                        "direction": "inbound",
+                        "content": text_body,
+                        "status": "received",
+                        "message_id": sid,
+                        "sent_at": now().isoformat(),
+                        "ai_response_suggestion": suggestion,
+                        "sentiment": sentiment.get("sentiment"),
+                    }
+                    await db.messages.insert_one(msg_doc)
+                    msg_doc.pop("_id", None)
+                    await ws_manager.broadcast(tenant_id, {"type": "message", "conversation_id": conv["id"], "message": msg_doc})
+
+                    try:
+                        from flow_engine import trigger_or_continue
+                        await trigger_or_continue(db, tenant_id, conv, text_body)
+                    except Exception as e:
+                        print(f"[flow_engine] meta webhook error: {e}")
+    except Exception as e:
+        print(f"[meta_webhook] error: {e}")
+    return {"ok": True}
+
+
+# ============ Sandbox info & test-send ============
+@router.get("/sandbox-info")
+async def sandbox_info(current=Depends(get_current_user)):
+    """Return Twilio sandbox join instructions for the tenant.
+
+    The sandbox 'join code' is unique per Twilio account — fetched live from Twilio.
+    """
+    wfrom = os.environ["TWILIO_WHATSAPP_FROM"]
+    join_keyword = os.environ.get("TWILIO_SANDBOX_KEYWORD", "")
+    phone = wfrom.replace("whatsapp:", "")
+    return {
+        "sandbox_phone": phone,
+        "join_keyword": join_keyword or "(open Twilio Console → Messaging → Try WhatsApp to find your join code)",
+        "instructions": (
+            f"To receive sandbox messages on real WhatsApp, send 'join <your-keyword>' from the recipient's "
+            f"WhatsApp to {phone}. Twilio will reply confirming opt-in. Without this, sandbox messages will fail."
+        ),
+        "console_url": "https://console.twilio.com/us1/develop/sms/try-it-out/whatsapp-learn",
+    }
+
+
+@router.post("/test-send")
+async def test_send(body: dict, current=Depends(get_current_user)):
+    """Send a test WhatsApp message using a saved credential. Returns Twilio/Meta error verbatim if any."""
+    cred_id = body.get("credential_id")
+    to_phone = (body.get("to_phone") or "").strip()
+    text = (body.get("text") or "Hello from wabridge — this is a test message.").strip()
+    if not cred_id or not to_phone:
+        raise HTTPException(400, "credential_id and to_phone required")
+    if not to_phone.startswith("+"):
+        raise HTTPException(400, "to_phone must be in E.164 format (e.g., +919876543210)")
+    cred = await _load_credential(current["tenant_id"], cred_id)
+    result = await run_sync(send_whatsapp, cred, to_phone, text)
+    # Persist the test message so it appears in chat + delivery dashboard
+    conv = await db.conversations.find_one(
+        {"tenant_id": current["tenant_id"], "customer_phone": to_phone}, {"_id": 0},
+    )
+    if not conv:
+        conv = {
+            "id": uid(),
+            "tenant_id": current["tenant_id"],
+            "credential_id": cred_id,
+            "customer_phone": to_phone,
+            "customer_name": to_phone,
+            "status": "active",
+            "unread_count": 0,
+            "lead_score": 50,
+            "last_message": text,
+            "last_message_at": now().isoformat(),
+            "created_at": now().isoformat(),
+        }
+        await db.conversations.insert_one(conv)
+    await db.messages.insert_one({
+        "id": uid(),
+        "conversation_id": conv["id"],
+        "tenant_id": current["tenant_id"],
+        "direction": "outbound",
+        "content": text,
+        "status": result.get("status", "sent") if result.get("success") else "failed",
+        "message_id": result.get("sid", ""),
+        "sent_at": now().isoformat(),
+        "error": None if result.get("success") else result.get("error"),
+    })
+    if not result.get("success"):
+        # Map Twilio's "not opted in" to a clearer message
+        err = (result.get("error") or "").lower()
+        hint = None
+        if "63007" in err or "not opt" in err or "63015" in err or "63016" in err or "63018" in err:
+            hint = (
+                "Recipient has not joined the Twilio sandbox. From the recipient's WhatsApp, "
+                "send 'join <your-keyword>' to +14155238886. Find your keyword in the Twilio "
+                "Console → Messaging → Try WhatsApp."
+            )
+        return {**result, "hint": hint}
+    return result
 
 
 # ============ Sandbox / Simulate (for preview without live Twilio) ============

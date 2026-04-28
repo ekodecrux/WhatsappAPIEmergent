@@ -166,6 +166,77 @@ def validate_twilio_credentials(account_sid: str, auth_token: str) -> bool:
         return False
 
 
+# ================ Meta Cloud (WhatsApp Business Cloud API) ================
+META_GRAPH_BASE = os.environ.get("META_GRAPH_BASE", "https://graph.facebook.com/v20.0")
+
+
+def validate_meta_credentials(access_token: str, phone_number_id: str) -> dict:
+    """Verify a Meta Cloud token + phone number ID by calling the Graph API.
+
+    Returns: {"success": bool, "display_phone_number": str, "verified_name": str, "error": str?}
+    """
+    import requests
+    try:
+        url = f"{META_GRAPH_BASE}/{phone_number_id}"
+        r = requests.get(url, headers={"Authorization": f"Bearer {access_token}"}, timeout=10)
+        if r.status_code == 200:
+            data = r.json()
+            return {
+                "success": True,
+                "display_phone_number": data.get("display_phone_number", ""),
+                "verified_name": data.get("verified_name", ""),
+            }
+        try:
+            err = r.json().get("error", {})
+            msg = err.get("message") or err.get("type") or f"HTTP {r.status_code}"
+        except Exception:
+            msg = f"HTTP {r.status_code}: {r.text[:200]}"
+        return {"success": False, "error": msg}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def send_whatsapp_via_meta(access_token: str, phone_number_id: str, to_phone: str, body: str) -> dict:
+    """Send a text message via Meta Cloud API.
+
+    to_phone: E.164 with leading + (e.g., '+919876543210') — Meta requires no '+' prefix.
+    """
+    import requests
+    try:
+        clean_to = to_phone.replace("whatsapp:", "").lstrip("+")
+        url = f"{META_GRAPH_BASE}/{phone_number_id}/messages"
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": clean_to,
+            "type": "text",
+            "text": {"body": body},
+        }
+        r = requests.post(url, json=payload, headers={"Authorization": f"Bearer {access_token}"}, timeout=15)
+        if r.status_code in (200, 201):
+            data = r.json()
+            mid = (data.get("messages") or [{}])[0].get("id", "")
+            return {"success": True, "sid": mid, "status": "sent"}
+        try:
+            err = r.json().get("error", {})
+            msg = err.get("message") or f"HTTP {r.status_code}"
+        except Exception:
+            msg = f"HTTP {r.status_code}: {r.text[:200]}"
+        return {"success": False, "error": msg}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def send_whatsapp(cred: dict, to_phone: str, body: str) -> dict:
+    """Provider-aware WhatsApp send. Dispatches based on cred['provider']."""
+    provider = (cred or {}).get("provider", "twilio_sandbox")
+    if provider == "meta_cloud":
+        access_token = decrypt_text(cred.get("auth_token_enc", ""))
+        return send_whatsapp_via_meta(access_token, cred.get("phone_number_id", ""), to_phone, body)
+    sid = decrypt_text(cred.get("account_sid_enc", ""))
+    tok = decrypt_text(cred.get("auth_token_enc", ""))
+    return send_whatsapp_via_twilio(sid, tok, cred.get("whatsapp_from", ""), to_phone, body)
+
+
 # ================ Groq AI ================
 def groq_chat(system: str, user_msg: str, max_tokens: int = 200) -> str:
     """Call Groq for completion, fallback if not available."""

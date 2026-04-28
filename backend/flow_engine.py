@@ -15,7 +15,7 @@ import asyncio
 from typing import Any
 import httpx
 
-from helpers import decrypt_text, send_whatsapp_via_twilio, run_sync
+from helpers import decrypt_text, send_whatsapp, run_sync
 
 
 def _node(flow: dict, node_id: str) -> dict | None:
@@ -116,9 +116,7 @@ async def _send(db, flow: dict, conversation: dict, content: str):
     cred = await db.whatsapp_credentials.find_one({"id": flow["credential_id"]}, {"_id": 0})
     if not cred:
         return
-    sid = decrypt_text(cred["account_sid_enc"])
-    tok = decrypt_text(cred["auth_token_enc"])
-    result = await run_sync(send_whatsapp_via_twilio, sid, tok, cred["whatsapp_from"], conversation["customer_phone"], content)
+    result = await run_sync(send_whatsapp, cred, conversation["customer_phone"], content)
     msg_doc = {
         "id": secrets.token_hex(8),
         "conversation_id": conversation["id"],
