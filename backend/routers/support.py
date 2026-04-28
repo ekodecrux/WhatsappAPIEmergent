@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from server import db
 from models import TicketIn, TicketReplyIn, TicketStatusIn, uid, now
-from helpers import get_current_user, require_superadmin, audit_log
+from helpers import get_current_user, require_superadmin, audit_log, send_email, run_sync
 
 
 router = APIRouter(prefix="/support", tags=["support"])
@@ -85,6 +85,38 @@ async def reply_to_ticket(tid: str, payload: TicketReplyIn, current=Depends(get_
         {"id": tid},
         {"$push": {"replies": reply}, "$set": {"updated_at": now().isoformat(), "status": new_status}},
     )
+
+    # Email notify the OTHER party
+    try:
+        is_staff = bool(current.get("is_superadmin"))
+        if is_staff:
+            # Notify the customer
+            recipient = t.get("user_email")
+            who = "Our support team"
+        else:
+            # Notify all super admins
+            sa_emails = []
+            async for u in db.users.find({"is_superadmin": True}, {"_id": 0, "email": 1}):
+                if u.get("email"):
+                    sa_emails.append(u["email"])
+            recipient = ",".join(sa_emails) if sa_emails else None
+            who = current.get("full_name") or current.get("email") or "A customer"
+        if recipient:
+            subject = f"[Ticket #{tid[:8]}] {t.get('subject', 'Support reply')}"
+            html = (
+                f"<p>{who} replied on ticket <strong>{t.get('subject', '')}</strong>:</p>"
+                f"<blockquote style='border-left:3px solid #128C7E;padding:8px 12px;color:#444;'>"
+                f"{(payload.message or '').replace(chr(10), '<br>')}"
+                f"</blockquote>"
+                f"<p>Status: <strong>{new_status}</strong> · Priority: <strong>{t.get('priority')}</strong></p>"
+                f"<p>Open the ticket in wabridge to respond.</p>"
+            )
+            # Send to each recipient (comma-separated)
+            for addr in [a.strip() for a in recipient.split(",") if a.strip()]:
+                await run_sync(send_email, addr, subject, html)
+    except Exception as e:
+        print(f"[support] reply email notify failed: {e}")
+
     return reply
 
 

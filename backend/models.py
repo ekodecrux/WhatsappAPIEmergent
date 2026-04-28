@@ -140,12 +140,23 @@ class TemplateIn(BaseModel):
 
 
 # ===== Campaigns =====
+class CampaignVariant(BaseModel):
+    name: str = Field(min_length=1, max_length=40)  # e.g. "Variant A"
+    message: str = Field(min_length=1, max_length=4096)
+    media_url: str | None = None
+    media_type: str | None = None  # image | document | audio | video
+    weight: int = Field(default=50, ge=1, le=99)  # % traffic, must total ≤100 across variants
+
+
 class CampaignIn(BaseModel):
     name: str
     credential_id: str
     message: str
     recipients: list[str]  # list of phone numbers in E.164 format
     schedule_at: datetime | None = None
+    media_url: str | None = None
+    media_type: str | None = None
+    variants: list[CampaignVariant] = []  # optional A/B test; if empty → single message
 
 
 class CampaignApprove(BaseModel):
@@ -178,6 +189,8 @@ class SendMessageIn(BaseModel):
     credential_id: str
     to_phone: str
     content: str
+    media_url: str | None = None
+    media_type: str | None = None  # image | document | audio | video
 
 
 class ConversationCreateIn(BaseModel):

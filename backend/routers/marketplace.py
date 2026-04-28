@@ -2,6 +2,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 
 from server import db
 from models import uid, now
@@ -18,8 +19,14 @@ def _strip(t: dict) -> dict:
         "nodes", "edges", "triggers", "translations",
         "author_name", "author_company",
         "downloads", "created_at", "is_featured", "node_count",
+        "avg_rating", "rating_count",
     }
     return {k: v for k, v in t.items() if k in safe_keys}
+
+
+class ReviewIn(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    comment: str | None = Field(default=None, max_length=600)
 
 
 @router.post("/publish/{fid}")
@@ -152,3 +159,60 @@ async def categories(current=Depends(get_current_user)):
     """Distinct categories for filtering."""
     cats = await db.marketplace_templates.distinct("category")
     return sorted([c for c in cats if c])
+
+
+# ============ Reviews & ratings ============
+async def _recompute_rating(tpl_id: str) -> tuple[float, int]:
+    fresh = await db.marketplace_templates.find_one({"id": tpl_id}, {"_id": 0, "reviews": 1})
+    reviews = (fresh or {}).get("reviews") or []
+    avg = round(sum(r["rating"] for r in reviews) / len(reviews), 2) if reviews else 0
+    await db.marketplace_templates.update_one(
+        {"id": tpl_id},
+        {"$set": {"avg_rating": avg, "rating_count": len(reviews)}},
+    )
+    return avg, len(reviews)
+
+
+@router.post("/templates/{tpl_id}/reviews")
+async def submit_review(tpl_id: str, payload: ReviewIn, current=Depends(get_current_user)):
+    t = await db.marketplace_templates.find_one({"id": tpl_id}, {"_id": 0})
+    if not t:
+        raise HTTPException(404, "Not found")
+    if t.get("author_tenant_id") == current["tenant_id"]:
+        raise HTTPException(400, "You cannot review your own template")
+    tenant = await db.tenants.find_one({"id": current["tenant_id"]}, {"_id": 0, "company_name": 1}) or {}
+    rev = {
+        "user_id": current["id"],
+        "user_name": current.get("full_name") or current.get("email") or "Anonymous",
+        "company": tenant.get("company_name") or "",
+        "rating": payload.rating,
+        "comment": (payload.comment or "").strip()[:600],
+        "created_at": now().isoformat(),
+    }
+    # Upsert: one review per user per template
+    await db.marketplace_templates.update_one({"id": tpl_id}, {"$pull": {"reviews": {"user_id": current["id"]}}})
+    await db.marketplace_templates.update_one({"id": tpl_id}, {"$push": {"reviews": rev}})
+    avg, count = await _recompute_rating(tpl_id)
+    return {"avg_rating": avg, "rating_count": count}
+
+
+@router.get("/templates/{tpl_id}/reviews")
+async def list_reviews(tpl_id: str, current=Depends(get_current_user)):
+    t = await db.marketplace_templates.find_one(
+        {"id": tpl_id},
+        {"_id": 0, "reviews": 1, "avg_rating": 1, "rating_count": 1},
+    )
+    if not t:
+        raise HTTPException(404, "Not found")
+    return {
+        "avg_rating": t.get("avg_rating", 0),
+        "rating_count": t.get("rating_count", 0),
+        "reviews": (t.get("reviews") or [])[-50:][::-1],
+    }
+
+
+@router.delete("/templates/{tpl_id}/reviews")
+async def delete_my_review(tpl_id: str, current=Depends(get_current_user)):
+    await db.marketplace_templates.update_one({"id": tpl_id}, {"$pull": {"reviews": {"user_id": current["id"]}}})
+    avg, count = await _recompute_rating(tpl_id)
+    return {"deleted": True, "avg_rating": avg, "rating_count": count}

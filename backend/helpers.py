@@ -151,13 +151,16 @@ def get_twilio_client(account_sid: str | None = None, auth_token: str | None = N
     return Client(sid, tok)
 
 
-def send_whatsapp_via_twilio(account_sid: str, auth_token: str, from_addr: str, to_phone: str, body: str) -> dict:
-    """Send WhatsApp text via Twilio. to_phone in E.164 format."""
+def send_whatsapp_via_twilio(account_sid: str, auth_token: str, from_addr: str, to_phone: str, body: str, media_url: str | None = None) -> dict:
+    """Send WhatsApp text (and optional media) via Twilio. to_phone in E.164 format."""
     try:
         c = get_twilio_client(account_sid, auth_token)
         if not to_phone.startswith("whatsapp:"):
             to_phone = f"whatsapp:{to_phone}"
-        msg = c.messages.create(from_=from_addr, to=to_phone, body=body)
+        kwargs: dict = {"from_": from_addr, "to": to_phone, "body": body or ""}
+        if media_url:
+            kwargs["media_url"] = [media_url]
+        msg = c.messages.create(**kwargs)
         return {"success": True, "sid": msg.sid, "status": msg.status}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -202,21 +205,33 @@ def validate_meta_credentials(access_token: str, phone_number_id: str) -> dict:
         return {"success": False, "error": str(e)}
 
 
-def send_whatsapp_via_meta(access_token: str, phone_number_id: str, to_phone: str, body: str) -> dict:
-    """Send a text message via Meta Cloud API.
+def send_whatsapp_via_meta(access_token: str, phone_number_id: str, to_phone: str, body: str, media_url: str | None = None, media_type: str | None = None) -> dict:
+    """Send a text or media message via Meta Cloud API.
 
     to_phone: E.164 with leading + (e.g., '+919876543210') — Meta requires no '+' prefix.
+    media_type: image | document | audio | video — required if media_url is provided.
     """
     import requests
     try:
         clean_to = to_phone.replace("whatsapp:", "").lstrip("+")
         url = f"{META_GRAPH_BASE}/{phone_number_id}/messages"
-        payload = {
-            "messaging_product": "whatsapp",
-            "to": clean_to,
-            "type": "text",
-            "text": {"body": body},
-        }
+        if media_url and media_type in ("image", "document", "audio", "video"):
+            media_payload: dict = {"link": media_url}
+            if body and media_type in ("image", "document", "video"):
+                media_payload["caption"] = body
+            payload = {
+                "messaging_product": "whatsapp",
+                "to": clean_to,
+                "type": media_type,
+                media_type: media_payload,
+            }
+        else:
+            payload = {
+                "messaging_product": "whatsapp",
+                "to": clean_to,
+                "type": "text",
+                "text": {"body": body or ""},
+            }
         r = requests.post(url, json=payload, headers={"Authorization": f"Bearer {access_token}"}, timeout=15)
         if r.status_code in (200, 201):
             data = r.json()
@@ -232,15 +247,34 @@ def send_whatsapp_via_meta(access_token: str, phone_number_id: str, to_phone: st
         return {"success": False, "error": str(e)}
 
 
-def send_whatsapp(cred: dict, to_phone: str, body: str) -> dict:
-    """Provider-aware WhatsApp send. Dispatches based on cred['provider']."""
+def send_whatsapp(cred: dict, to_phone: str, body: str, media_url: str | None = None, media_type: str | None = None) -> dict:
+    """Provider-aware WhatsApp send with optional media attachment."""
     provider = (cred or {}).get("provider", "twilio_sandbox")
     if provider == "meta_cloud":
         access_token = decrypt_text(cred.get("auth_token_enc", ""))
-        return send_whatsapp_via_meta(access_token, cred.get("phone_number_id", ""), to_phone, body)
+        return send_whatsapp_via_meta(access_token, cred.get("phone_number_id", ""), to_phone, body, media_url, media_type)
     sid = decrypt_text(cred.get("account_sid_enc", ""))
     tok = decrypt_text(cred.get("auth_token_enc", ""))
-    return send_whatsapp_via_twilio(sid, tok, cred.get("whatsapp_from", ""), to_phone, body)
+    return send_whatsapp_via_twilio(sid, tok, cred.get("whatsapp_from", ""), to_phone, body, media_url)
+
+
+def verify_meta_webhook_signature(raw_body: bytes, signature_header: str | None) -> bool:
+    """Verify Meta webhook X-Hub-Signature-256 against META_APP_SECRET.
+
+    Returns True if signature matches OR if META_APP_SECRET isn't configured (dev mode).
+    Production: ALWAYS configure META_APP_SECRET so spoofed inbounds are rejected.
+    """
+    import hmac
+    import hashlib
+    secret = os.environ.get("META_APP_SECRET", "").strip()
+    if not secret:
+        # Dev mode: skip verification but log a warning at module level (caller decides)
+        return True
+    if not signature_header or not signature_header.startswith("sha256="):
+        return False
+    expected = signature_header.split("=", 1)[1]
+    digest = hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(digest, expected)
 
 
 # ================ Groq AI ================

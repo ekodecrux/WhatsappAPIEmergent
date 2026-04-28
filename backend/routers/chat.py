@@ -71,7 +71,7 @@ async def send_in_conversation(conv_id: str, payload: SendMessageIn, current=Dep
     if not cred:
         raise HTTPException(404, "Credential not found")
 
-    result = await run_sync(send_whatsapp, cred, conv["customer_phone"], payload.content)
+    result = await run_sync(send_whatsapp, cred, conv["customer_phone"], payload.content, payload.media_url, payload.media_type)
 
     msg_doc = {
         "id": uid(),
@@ -79,6 +79,8 @@ async def send_in_conversation(conv_id: str, payload: SendMessageIn, current=Dep
         "tenant_id": current["tenant_id"],
         "direction": "outbound",
         "content": payload.content,
+        "media_url": payload.media_url,
+        "media_type": payload.media_type,
         "status": result.get("status", "sent") if result.get("success") else "failed",
         "message_id": result.get("sid", ""),
         "sent_at": now().isoformat(),

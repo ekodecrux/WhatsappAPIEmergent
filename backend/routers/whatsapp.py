@@ -1,4 +1,5 @@
 """WhatsApp credentials, message send, templates, webhooks"""
+import json
 import os
 from datetime import datetime, timezone
 
@@ -116,7 +117,7 @@ async def _load_credential(tenant_id: str, cred_id: str) -> dict:
 @router.post("/send")
 async def send_one(payload: SendMessageIn, current=Depends(get_current_user)):
     cred = await _load_credential(current["tenant_id"], payload.credential_id)
-    result = await run_sync(send_whatsapp, cred, payload.to_phone, payload.content)
+    result = await run_sync(send_whatsapp, cred, payload.to_phone, payload.content, payload.media_url, payload.media_type)
 
     # Track conversation
     conv = await db.conversations.find_one(
@@ -206,6 +207,20 @@ async def twilio_inbound(request: Request):
     sid = form.get("MessageSid", "")
     customer_phone = from_addr.replace("whatsapp:", "")
 
+    # Capture inbound media (Twilio sends MediaUrl0 + MediaContentType0 ...)
+    media_url = form.get("MediaUrl0") or None
+    media_ct = form.get("MediaContentType0") or ""
+    media_type = None
+    if media_url and media_ct:
+        if media_ct.startswith("image/"):
+            media_type = "image"
+        elif media_ct.startswith("audio/"):
+            media_type = "audio"
+        elif media_ct.startswith("video/"):
+            media_type = "video"
+        else:
+            media_type = "document"
+
     # Find which tenant owns this 'to' number
     cred = await db.whatsapp_credentials.find_one({"whatsapp_from": to_addr}, {"_id": 0})
     if not cred:
@@ -257,6 +272,8 @@ async def twilio_inbound(request: Request):
         "tenant_id": tenant_id,
         "direction": "inbound",
         "content": body,
+        "media_url": media_url,
+        "media_type": media_type,
         "status": "received",
         "message_id": sid,
         "sent_at": now().isoformat(),
@@ -334,8 +351,20 @@ async def meta_webhook_verify(request: Request):
 
 @router.post("/webhook/meta")
 async def meta_webhook_inbound(request: Request):
-    """Receive Meta Cloud WhatsApp webhooks (messages + statuses)."""
-    body = await request.json()
+    """Receive Meta Cloud WhatsApp webhooks (messages + statuses).
+
+    Verifies X-Hub-Signature-256 against META_APP_SECRET. If the secret is not set
+    the verification is skipped (dev mode) — set META_APP_SECRET in production.
+    """
+    raw = await request.body()
+    sig = request.headers.get("X-Hub-Signature-256") or request.headers.get("x-hub-signature-256")
+    from helpers import verify_meta_webhook_signature
+    if not verify_meta_webhook_signature(raw, sig):
+        return PlainTextResponse("invalid signature", status_code=401)
+    try:
+        body = json.loads(raw.decode("utf-8") or "{}")
+    except Exception:
+        return {"ok": True}
     try:
         for entry in body.get("entry", []):
             for ch in entry.get("changes", []):

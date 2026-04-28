@@ -25,12 +25,29 @@ async def create_campaign(payload: CampaignIn, current=Depends(get_current_user)
     cid = uid()
     # Normalize recipients
     recipients = [r.strip() for r in payload.recipients if r and r.strip()]
+
+    # Prepare variants for A/B testing
+    variants_in = [v.model_dump() if hasattr(v, "model_dump") else dict(v) for v in (payload.variants or [])]
+    if variants_in:
+        total_weight = sum(int(v.get("weight", 0)) for v in variants_in)
+        if total_weight <= 0 or total_weight > 100:
+            raise HTTPException(400, "Variant weights must sum between 1 and 100")
+        # Initialize per-variant counters
+        for v in variants_in:
+            v["sent_count"] = 0
+            v["delivered_count"] = 0
+            v["failed_count"] = 0
+
     doc = {
         "id": cid,
         "tenant_id": current["tenant_id"],
         "credential_id": payload.credential_id,
         "name": payload.name,
         "message": payload.message,
+        "media_url": payload.media_url,
+        "media_type": payload.media_type,
+        "variants": variants_in,
+        "is_ab_test": bool(variants_in),
         "status": "pending_approval",
         "total_recipients": len(recipients),
         "sent_count": 0,
@@ -111,7 +128,8 @@ async def resume_campaign(cid: str, background_tasks: BackgroundTasks, current=D
 
 
 async def _run_campaign(cid: str):
-    """Background task to send campaign messages with rate limiting."""
+    """Background task to send campaign messages with rate limiting + optional A/B variants."""
+    import random
     c = await db.campaigns.find_one({"id": cid}, {"_id": 0})
     if not c:
         return
@@ -125,13 +143,44 @@ async def _run_campaign(cid: str):
     already_sent = sent
     recipients_remaining = c.get("recipients", [])[already_sent:]
 
-    for phone in recipients_remaining:
+    variants = c.get("variants") or []
+    is_ab = bool(variants)
+
+    def pick_variant(idx: int) -> int | None:
+        """Return variant index based on cumulative weights and a deterministic seed (idx)."""
+        if not is_ab:
+            return None
+        total = sum(int(v.get("weight", 0)) for v in variants)
+        if total <= 0:
+            return None
+        # Deterministic per-recipient: hash(idx) % total
+        rnd = random.Random(f"{cid}:{idx}")
+        roll = rnd.randint(1, total)
+        cum = 0
+        for i, v in enumerate(variants):
+            cum += int(v.get("weight", 0))
+            if roll <= cum:
+                return i
+        return 0
+
+    for offset, phone in enumerate(recipients_remaining):
         # Check pause status
         cc = await db.campaigns.find_one({"id": cid}, {"_id": 0, "status": 1})
         if cc and cc.get("status") in ("paused", "rejected"):
             break
 
-        result = await run_sync(send_whatsapp, cred, phone, c["message"])
+        v_idx = pick_variant(already_sent + offset)
+        if v_idx is not None:
+            v = variants[v_idx]
+            msg_text = v.get("message") or c["message"]
+            mu = v.get("media_url") or c.get("media_url")
+            mt = v.get("media_type") or c.get("media_type")
+        else:
+            msg_text = c["message"]
+            mu = c.get("media_url")
+            mt = c.get("media_type")
+
+        result = await run_sync(send_whatsapp, cred, phone, msg_text, mu, mt)
         sent += 1
         if result.get("success"):
             delivered += 1
@@ -152,7 +201,7 @@ async def _run_campaign(cid: str):
                 "status": "active",
                 "unread_count": 0,
                 "lead_score": 50,
-                "last_message": c["message"],
+                "last_message": msg_text,
                 "last_message_at": now().isoformat(),
                 "created_at": now().isoformat(),
             }
@@ -162,13 +211,29 @@ async def _run_campaign(cid: str):
             "conversation_id": conv["id"],
             "tenant_id": c["tenant_id"],
             "direction": "outbound",
-            "content": c["message"],
+            "content": msg_text,
+            "media_url": mu,
+            "media_type": mt,
             "status": "sent" if result.get("success") else "failed",
             "campaign_id": cid,
+            "variant_index": v_idx,
+            "variant_name": variants[v_idx]["name"] if v_idx is not None else None,
             "message_id": result.get("sid", ""),
             "sent_at": now().isoformat(),
             "error": None if result.get("success") else result.get("error"),
         })
+
+        # Increment per-variant counter
+        if v_idx is not None:
+            inc_field = f"variants.{v_idx}.sent_count"
+            del_field = f"variants.{v_idx}.delivered_count"
+            fail_field = f"variants.{v_idx}.failed_count"
+            inc: dict = {inc_field: 1}
+            if result.get("success"):
+                inc[del_field] = 1
+            else:
+                inc[fail_field] = 1
+            await db.campaigns.update_one({"id": cid}, {"$inc": inc})
 
         # Persist progress every 10 messages
         if sent % 10 == 0:
