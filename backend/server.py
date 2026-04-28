@@ -42,6 +42,47 @@ async def lifespan(app: FastAPI):
     await db.marketplace_templates.create_index([("created_at", -1)])
     await db.marketplace_templates.create_index([("downloads", -1)])
     await db.marketplace_templates.create_index([("category", 1)])
+    await db.support_tickets.create_index([("tenant_id", 1), ("created_at", -1)])
+    await db.support_tickets.create_index([("status", 1), ("priority", 1)])
+
+    # Seed superadmin user (idempotent)
+    try:
+        from helpers import hash_password
+        from models import uid as _uid
+        from datetime import datetime as _dt, timezone as _tz
+        sa_email = os.environ.get("SUPERADMIN_EMAIL", "superadmin@wabridge.com")
+        sa_password = os.environ.get("SUPERADMIN_PASSWORD", "superadmin123")
+        existing = await db.users.find_one({"email": sa_email.lower()})
+        if not existing:
+            # Create a platform tenant for the super admin
+            platform_tenant_id = "platform"
+            if not await db.tenants.find_one({"id": platform_tenant_id}):
+                await db.tenants.insert_one({
+                    "id": platform_tenant_id,
+                    "company_name": "Platform Admin",
+                    "plan": "enterprise",
+                    "is_active": True,
+                    "is_platform": True,
+                    "created_at": _dt.now(_tz.utc).isoformat(),
+                })
+            await db.users.insert_one({
+                "id": _uid(),
+                "tenant_id": platform_tenant_id,
+                "email": sa_email.lower(),
+                "password_hash": hash_password(sa_password),
+                "full_name": "Super Admin",
+                "role": "admin",
+                "is_superadmin": True,
+                "is_active": True,
+                "created_at": _dt.now(_tz.utc).isoformat(),
+            })
+            logger.info("Seeded superadmin: %s", sa_email)
+        elif not existing.get("is_superadmin"):
+            await db.users.update_one({"email": sa_email.lower()}, {"$set": {"is_superadmin": True}})
+            logger.info("Elevated existing user to superadmin: %s", sa_email)
+    except Exception as e:
+        logger.warning("Superadmin seed skipped: %s", e)
+
     logger.info("WhatsApp SaaS started. DB: %s", os.environ["DB_NAME"])
     yield
     client.close()
@@ -75,6 +116,9 @@ from routers import dashboard as r_dashboard  # noqa: E402
 from routers import team as r_team  # noqa: E402
 from routers import flows as r_flows  # noqa: E402
 from routers import marketplace as r_marketplace  # noqa: E402
+from routers import admin as r_admin  # noqa: E402
+from routers import support as r_support  # noqa: E402
+from routers import assistant as r_assistant  # noqa: E402
 
 api_router.include_router(r_auth.router)
 api_router.include_router(r_otp.router)
@@ -87,6 +131,9 @@ api_router.include_router(r_dashboard.router)
 api_router.include_router(r_team.router)
 api_router.include_router(r_flows.router)
 api_router.include_router(r_marketplace.router)
+api_router.include_router(r_admin.router)
+api_router.include_router(r_support.router)
+api_router.include_router(r_assistant.router)
 
 app.include_router(api_router)
 

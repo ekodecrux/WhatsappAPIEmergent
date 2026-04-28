@@ -69,6 +69,41 @@ class TokenOut(BaseModel):
     company_name: str
     plan: str
     trial_days_left: int
+    is_superadmin: bool = False
+
+
+# ===== Support tickets =====
+class TicketIn(BaseModel):
+    subject: str = Field(min_length=3, max_length=120)
+    description: str = Field(min_length=10, max_length=4000)
+    priority: str = "normal"  # low | normal | high | urgent
+    category: str = "general"  # general | billing | technical | bug | feature
+    source: str = "manual"  # manual | chatbot
+
+
+class TicketReplyIn(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+
+
+class TicketStatusIn(BaseModel):
+    status: str | None = None  # open | in_progress | resolved | closed
+    priority: str | None = None
+    assigned_to: str | None = None
+
+
+# ===== Admin / Tenant management =====
+class TenantUpdateIn(BaseModel):
+    plan: str | None = None  # trial | basic | pro | enterprise
+    is_active: bool | None = None
+    extend_trial_days: int | None = None  # adds N days to trial_end_date
+    notes: str | None = None
+
+
+# ===== AI Assistant =====
+class AssistantChatIn(BaseModel):
+    message: str = Field(min_length=1, max_length=2000)
+    history: list[dict] = []  # [{role:"user"|"assistant", content:str}]
+    page_context: dict | None = None  # {route, plan, company, ...}
 
 
 # ===== WhatsApp Credentials =====

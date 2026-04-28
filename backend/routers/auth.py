@@ -92,6 +92,7 @@ async def login(payload: LoginIn):
         company_name=tenant["company_name"],
         plan=tenant.get("plan", "trial"),
         trial_days_left=trial_days_left(tenant),
+        is_superadmin=bool(user.get("is_superadmin")),
     )
 
 

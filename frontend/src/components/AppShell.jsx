@@ -3,9 +3,10 @@ import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, MessageSquare, Send, Users, MessagesSquare, Bot,
   FileText, Workflow, BarChart3, CreditCard, Plug, UserPlus, BookOpen, Settings as SettingsIcon, LogOut,
-  Menu, X, ChevronRight, AlertTriangle, Sparkles, Store, Activity
+  Menu, X, ChevronRight, AlertTriangle, Sparkles, Store, Activity, Shield, LifeBuoy
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import AIAssistant from './AIAssistant';
 
 const NAV = [
   { to: '/app', label: 'Overview', icon: LayoutDashboard, end: true },
@@ -22,8 +23,13 @@ const NAV = [
   { to: '/app/billing', label: 'Subscription', icon: CreditCard },
   { to: '/app/integrations', label: 'ERP & API', icon: Plug },
   { to: '/app/team', label: 'Team', icon: UserPlus },
+  { to: '/app/support', label: 'Support', icon: LifeBuoy },
   { to: '/app/guide', label: 'User Guide', icon: BookOpen },
   { to: '/app/settings', label: 'Settings', icon: SettingsIcon },
+];
+
+const SUPERADMIN_NAV = [
+  { to: '/app/admin', label: 'Admin Console', icon: Shield },
 ];
 
 const TITLES = NAV.reduce((m, n) => ({ ...m, [n.to]: n.label }), {});
@@ -72,6 +78,29 @@ export default function AppShell() {
               <span>{item.label}</span>
             </NavLink>
           ))}
+          {user?.is_superadmin && (
+            <>
+              <div className="mt-4 border-t border-zinc-200 pt-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-purple-700">
+                Platform
+              </div>
+              {SUPERADMIN_NAV.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  data-testid={`nav-${item.label.replace(/\s|\//g, '-').toLowerCase()}`}
+                  onClick={() => setMobileOpen(false)}
+                  className={({ isActive }) =>
+                    `flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition ${
+                      isActive ? 'bg-purple-50 font-medium text-purple-900' : 'text-purple-700 hover:bg-purple-50'
+                    }`
+                  }
+                >
+                  <item.icon className="h-4 w-4" />
+                  <span>{item.label}</span>
+                </NavLink>
+              ))}
+            </>
+          )}
         </nav>
         {onTrial && (
           <div className="mx-3 mt-6 rounded-md border border-zinc-200 bg-gradient-to-br from-wa-dark to-wa-mid p-3.5 text-white">
@@ -162,6 +191,7 @@ export default function AppShell() {
           <Outlet />
         </div>
       </main>
+      <AIAssistant />
     </div>
   );
 }

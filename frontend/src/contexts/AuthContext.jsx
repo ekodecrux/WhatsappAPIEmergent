@@ -48,7 +48,7 @@ export function AuthProvider({ children }) {
   const refreshUser = async () => {
     try {
       const { data } = await api.get('/auth/me');
-      const merged = { ...user, ...data.user, plan: data.tenant?.plan, company_name: data.tenant?.company_name, trial_days_left: data.trial_days_left };
+      const merged = { ...user, ...data.user, plan: data.tenant?.plan, company_name: data.tenant?.company_name, trial_days_left: data.trial_days_left, is_superadmin: data.user?.is_superadmin || user?.is_superadmin };
       localStorage.setItem('wa_user', JSON.stringify(merged));
       setUser(merged);
     } catch {}

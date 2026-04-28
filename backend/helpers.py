@@ -70,6 +70,12 @@ async def require_admin(user: dict = Depends(get_current_user)) -> dict:
     return user
 
 
+async def require_superadmin(user: dict = Depends(get_current_user)) -> dict:
+    if not user.get("is_superadmin"):
+        raise HTTPException(status_code=403, detail="Super-admin only")
+    return user
+
+
 # ================ Encryption ================
 def _fernet_key() -> bytes:
     raw = os.environ["ENCRYPTION_KEY"].encode()
