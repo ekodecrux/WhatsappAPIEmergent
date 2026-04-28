@@ -65,7 +65,8 @@ Create a complete end-to-end WhatsApp SaaS subscription platform that integrates
 - `/api/ws?token=…` — real-time chat
 
 ## Test Status
-- **Iteration 8 (latest)**: Backend 25/25 pass, Frontend ~80% (Admin Console, Support, sidebar verified visually; AI panel testids added post-test)
+- **Iteration 9 (latest)**: 20/20 backend pass, 100% frontend (Meta HMAC + email-on-reply + marketplace reviews + A/B campaigns + rich media)
+- Iteration 8: 25/25 backend (Super Admin + Tickets + AI Assistant)
 - Iteration 7: 17/17 backend (Meta validation + sandbox helper)
 - Iteration 6: 22/23 (Multilingual + Marketplace + Delivery)
 - Iterations 1–5: 34/34 baseline
@@ -83,18 +84,21 @@ Create a complete end-to-end WhatsApp SaaS subscription platform that integrates
 - **AI Assistant** — context-aware floating widget on every page; returns text answers, action proposals (draft flow / draft campaign / send test / navigate / raise ticket), or auto-creates tickets when out of scope
 - Hardened: extend_trial_days clamped to 1–90 days and only allowed on trial plans
 
+## Implemented (this session — Apr 2026 part 2)
+- **Meta webhook HMAC verification** — `X-Hub-Signature-256` HMAC-SHA256 against `META_APP_SECRET` (set in `.env`). Missing/invalid signatures rejected with 401.
+- **Email notifications on ticket replies** — when staff replies → customer emailed; when customer replies → all super admins emailed. Threaded subject + status + priority embedded.
+- **Marketplace ratings & reviews** — 1-5 star ratings + comments; one review per user (upsert); `avg_rating` + `rating_count` aggregates; cards display ⭐ + count.
+- **A/B campaigns** — variants[] with weights summing ≤100%; deterministic weighted RNG per recipient; per-variant counters + winner badge in results modal.
+- **Rich media attachments** — `media_url` + `media_type` (image/document/audio/video) on /send, /conversations/{id}/send, and /campaigns (top-level + per-variant). Provider-aware: Twilio uses `media_url[]`, Meta uses native typed payload with caption. Twilio inbound webhook captures `MediaUrl0`.
+
 ## Backlog
-- **P0**: Meta webhook X-Hub-Signature-256 HMAC verification
 - **P1**:
   - Bulk-translate flows (1 click → 5 languages)
-  - Rich media messages (image/document/audio attachments)
   - Tenant impersonation ("View as tenant X" for super admin)
-  - Email notifications when tickets receive replies
 - **P2**:
-  - A/B test campaign messages
-  - Marketplace template ratings & reviews
   - Lead scoring history charts
   - DRY inbound handlers (twilio_inbound + meta_webhook_inbound share ~80%)
+  - Background-task email sends instead of inline (snappier UX on ticket replies)
 - **P3**:
   - Mobile app shell
   - Public API docs site
