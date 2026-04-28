@@ -1,0 +1,61 @@
+{
+  "summary": "Comprehensive backend + frontend testing of iteration 12 (P1 ERP passthrough + P2 admin analytics). 20/20 backend tests pass — auto-refund verified, HMAC-SHA256 webhook signature verified end-to-end via httpbin echo. Frontend Integrations page (4 tabs, webhook create+ping+activity, docs) works. Admin Analytics tab loads with KPIs / funnel / top-tenants / message-mix / range switching, but the time-series Recharts (messages-per-day, revenue-per-day, new-tenants-per-day) render as empty white panels (0-width/height ResponsiveContainer issue).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/integrations/erp/send-template", "issue": "Returns 404 for unknown template_id but PRD says 400. Acceptable but inconsistent with spec."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "AdminConsole.AnalyticsTab — recharts time-series",
+        "issue": "Three line/bar chart panels (Messages per day, Top-up revenue per day, New tenants per day) render as empty white boxes. Recharts emits 'width(-1) and height(-1)' warning to console — the ResponsiveContainer's parent div has no explicit/min height. Fix: wrap each <ResponsiveContainer> parent with a fixed height (e.g. h-64 / h-72) or set <ResponsiveContainer height={240}>.",
+        "selector": "[data-testid='admin-analytics']",
+        "priority": "HIGH"
+      },
+      {
+        "component": "Integrations.jsx — webhook create modal",
+        "issue": "Initial hookForm.events default = ['message.received','message.status'], so the 'must pick at least one event' validation in createHook() can never trigger via the UI unless user manually unchecks both defaults. Either start with [] or remove the misleading defaults.",
+        "selector": "[data-testid='hook-submit']",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Admin Analytics",
+        "issues": [
+          "Empty chart panels look broken to end-user — even if data is correct via API.",
+          "Conversation Status Mix shows correctly with horizontal bars; KPI cards + funnel + top-tenants list render fine."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration12_p1_p2.py",
+    "/app/test_reports/pytest/iter12_results.xml"
+  ],
+  "action_items": [
+    "FIX: Add explicit height to recharts ResponsiveContainer wrappers in AdminConsole.AnalyticsTab — currently three time-series charts render blank.",
+    "OPTIONAL: Change webhook form defaults to [] so 'pick at least one event' validation actually runs OR adjust validation message.",
+    "OPTIONAL (spec alignment): Return 400 instead of 404 for missing template_id in /api/integrations/erp/send-template, OR update PRD to reflect 404."
+  ],
+  "critical_code_review_comments": [
+    "erp_dispatcher._deliver_one — uses asyncio.gather without await in dispatch_event (intentional fire-and-forget) but warning: if the FastAPI request finishes before httpx call, the loop may cancel pending tasks. Consider scheduling via FastAPI BackgroundTasks or asyncio.create_task to keep the task alive past request scope.",
+    "integrations.erp_send_message persists message via _save_outbound_msg even when send_whatsapp_billed fails (good for audit). Make sure messages.failed status propagates to billing 'reason' in response — currently billing dict mode/reason is exposed but client must combine with 'success' flag.",
+    "admin_analytics.timeseries — _since_iso uses ISO datetime for $gte against a string-stored created_at field. Works because lexicographic compare aligns for ISO-8601, but document this assumption.",
+    "admin_analytics.top_tenants — when metric='wallet_balance' it short-circuits and doesn't filter is_active, so suspended tenants with positive balance show in top list. Consider adding is_active filter.",
+    "Integrations.jsx is ~470 lines mixing tabs + modals + docs — split into smaller components (ApiKeysPanel, WebhooksPanel, ActivityPanel, DocsPanel) for maintainability."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration12_p1_p2.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "85%"},
+  "test_credentials": "demo@test.com / demo1234 (tenant) and superadmin@wabridge.com / superadmin123 (super admin) — both verified working via API + UI",
+  "seed_data_creation": "Created 4 TEST_iter12 webhooks (httpbin.org/post), several TEST_iter12_lead leads, TEST_iter12 API key, TEST_iter12_tpl template, multiple outbound 'failed' messages to +1999900xxxx (Twilio test failure path used to verify auto-refund). Wallet balance restored after each failed send (verified before/after delta < 0.5 INR).",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Reusable backend test file at /app/backend/tests/test_iteration12_p1_p2.py covers all P1+P2 endpoints (20 tests, ~6s runtime). Login form on /login is sometimes auto-filled by browser with demo@test.com — when switching users in playwright, use page.context.clear_cookies() + click+Ctrl+A+Delete+keyboard.type pattern (page.fill() alone does not override the browser autofill). For super admin Analytics, the Recharts time-series panels render empty due to ResponsiveContainer height=0 — needs explicit chart height.",
+  "rca of the issue": "Recharts ResponsiveContainer with width='100%' height='100%' requires a parent element with a determined height. In AdminConsole.AnalyticsTab the wrapper divs have no h-* class and no flex parent providing height, so the container resolves to 0x0 and Recharts logs the 'width(-1) height(-1)' warning. Reproduction: login as superadmin -> /app/admin -> Analytics tab -> observe 3 panels (Messages per day / Top-up revenue per day / New tenants per day) are blank while the API returns valid series data (verified: timeseries returns 30 day buckets with non-zero messages). Mitigation: set <div className='h-64'> around each ResponsiveContainer or pass height={256} prop to ResponsiveContainer."
+}

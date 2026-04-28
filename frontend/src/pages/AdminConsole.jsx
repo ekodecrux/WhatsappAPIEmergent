@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 
 const TABS = [
   { id: 'overview', label: 'Overview', icon: BarChart3 },
+  { id: 'analytics', label: 'Analytics', icon: TrendingUp },
   { id: 'tenants', label: 'Tenants', icon: Building2 },
   { id: 'users', label: 'Users', icon: Users },
   { id: 'subscriptions', label: 'Subscriptions', icon: CreditCard },
@@ -464,6 +465,222 @@ function TicketInbox() {
   );
 }
 
+// ============ Analytics Tab (super-admin) ============
+function MiniBarChart({ data, valueKey, color = '#075E54', formatY = (v) => v }) {
+  const max = Math.max(1, ...data.map(d => d[valueKey] || 0));
+  return (
+    <div className="flex h-32 items-end gap-1">
+      {data.map((d, i) => {
+        const v = d[valueKey] || 0;
+        const h = Math.max(2, (v / max) * 100);
+        return (
+          <div key={i} className="group relative flex-1">
+            <div
+              className="w-full rounded-sm transition-all hover:opacity-80"
+              style={{ height: `${h}%`, backgroundColor: color }}
+              title={`${d.date}: ${formatY(v)}`}
+            />
+            <div className="pointer-events-none absolute -top-7 left-1/2 hidden -translate-x-1/2 whitespace-nowrap rounded bg-zinc-900 px-1.5 py-0.5 text-[10px] text-white group-hover:block">
+              {d.date}: {formatY(v)}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function AnalyticsTab() {
+  const [days, setDays] = useState(30);
+  const [series, setSeries] = useState(null);
+  const [funnel, setFunnel] = useState(null);
+  const [topMetric, setTopMetric] = useState('messages');
+  const [top, setTop] = useState([]);
+  const [mix, setMix] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      api.get(`/admin/analytics/timeseries?days=${days}`),
+      api.get('/admin/analytics/funnel'),
+      api.get(`/admin/analytics/message-mix?days=${days}`),
+    ]).then(([s, f, m]) => {
+      setSeries(s.data); setFunnel(f.data); setMix(m.data);
+    }).finally(() => setLoading(false));
+  }, [days]);
+
+  useEffect(() => {
+    api.get(`/admin/analytics/top-tenants?metric=${topMetric}&limit=8`).then(({ data }) => setTop(data));
+  }, [topMetric]);
+
+  if (loading || !series || !funnel) return <div className="p-6 text-sm text-zinc-500">Loading analytics…</div>;
+
+  const t = series.totals;
+  return (
+    <div className="space-y-6" data-testid="admin-analytics">
+      <div className="flex items-center justify-between">
+        <div className="text-xs text-zinc-500">Platform metrics for the last <span className="font-mono">{days}</span> days.</div>
+        <div className="flex gap-1">
+          {[7, 30, 90].map(d => (
+            <button
+              key={d}
+              data-testid={`analytics-range-${d}`}
+              onClick={() => setDays(d)}
+              className={`rounded-md border px-2.5 py-1 text-[11px] font-medium ${days === d ? 'border-wa-dark bg-wa-dark text-white' : 'border-zinc-300 bg-white hover:bg-zinc-50'}`}
+            >{d}d</button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="New tenants" value={t.new_tenants} sub={`${days}d window`} icon={Building2} />
+        <StatCard label="Messages sent" value={(t.messages || 0).toLocaleString()} sub={`${days}d window`} icon={MessageSquare} />
+        <StatCard label="Top-up revenue" value={fmtINR(t.revenue_inr)} sub={`${days}d window`} icon={TrendingUp} accent="text-green-700" />
+        <StatCard label="Wallet cost" value={fmtINR(t.wallet_cost_inr)} sub={`Margin: ${fmtINR(t.revenue_inr - t.wallet_cost_inr)}`} icon={CreditCard} accent="text-purple-700" />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-md border border-zinc-200 bg-white p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">Messages per day</div>
+            <span className="text-xs text-zinc-500">Total {(t.messages || 0).toLocaleString()}</span>
+          </div>
+          <MiniBarChart data={series.series} valueKey="messages" color="#075E54" />
+        </div>
+        <div className="rounded-md border border-zinc-200 bg-white p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">Top-up revenue per day</div>
+            <span className="text-xs text-zinc-500">{fmtINR(t.revenue_inr)}</span>
+          </div>
+          <MiniBarChart data={series.series} valueKey="revenue_inr" color="#16a34a" formatY={(v) => `₹${Math.round(v)}`} />
+        </div>
+        <div className="rounded-md border border-zinc-200 bg-white p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">New tenants per day</div>
+            <span className="text-xs text-zinc-500">{t.new_tenants} signups</span>
+          </div>
+          <MiniBarChart data={series.series} valueKey="new_tenants" color="#7c3aed" />
+        </div>
+        <div className="rounded-md border border-zinc-200 bg-white p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">Conversation status mix ({mix?.days}d)</div>
+            <span className="text-xs text-zinc-500">{(mix?.total || 0).toLocaleString()} total</span>
+          </div>
+          <div className="space-y-2">
+            {Object.entries(mix?.by_status || {}).map(([status, count]) => {
+              const pct = mix.total ? Math.round((count / mix.total) * 100) : 0;
+              const colors = { sent: 'bg-blue-500', delivered: 'bg-cyan-500', read: 'bg-green-500', failed: 'bg-red-500', queued: 'bg-amber-500' };
+              return (
+                <div key={status}>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-mono text-zinc-700">{status}</span>
+                    <span className="font-mono text-zinc-500">{count.toLocaleString()} · {pct}%</span>
+                  </div>
+                  <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-zinc-100">
+                    <div className={`h-full ${colors[status] || 'bg-zinc-400'}`} style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="rounded-md border border-zinc-200 bg-white p-5">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">Conversion funnel</div>
+          <div className="mt-3 space-y-2 text-sm">
+            <FunnelRow label="Total tenants" value={funnel.total} max={funnel.total} />
+            <FunnelRow label="Trial" value={funnel.trial} max={funnel.total} />
+            <FunnelRow label="Paid" value={funnel.paid} max={funnel.total} accent="text-green-700" />
+            <FunnelRow label="On wallet plan" value={funnel.wallet_plan_tenants} max={funnel.total} accent="text-purple-700" />
+            <FunnelRow label="Active in 7 days" value={funnel.active_7d} max={funnel.total} />
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+            <div className="rounded-md border border-zinc-200 px-3 py-2">
+              <div className="text-[10px] uppercase text-zinc-500">Trial → Paid</div>
+              <div className="font-mono text-base font-semibold text-green-700">{funnel.trial_to_paid_pct}%</div>
+            </div>
+            <div className="rounded-md border border-zinc-200 px-3 py-2">
+              <div className="text-[10px] uppercase text-zinc-500">7d activation</div>
+              <div className="font-mono text-base font-semibold text-blue-700">{funnel.weekly_activation_pct}%</div>
+            </div>
+            <div className="rounded-md border border-zinc-200 px-3 py-2">
+              <div className="text-[10px] uppercase text-zinc-500">Suspended</div>
+              <div className="font-mono text-base font-semibold text-red-700">{funnel.suspended}</div>
+            </div>
+            <div className="rounded-md border border-zinc-200 px-3 py-2">
+              <div className="text-[10px] uppercase text-zinc-500">Churned 30d</div>
+              <div className="font-mono text-base font-semibold text-amber-700">{funnel.churned_30d}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-md border border-zinc-200 bg-white p-5 lg:col-span-2">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">Top tenants</div>
+            <div className="flex gap-1">
+              {[
+                ['messages', 'By messages'],
+                ['revenue', 'By revenue'],
+                ['wallet_balance', 'By balance'],
+              ].map(([id, lbl]) => (
+                <button
+                  key={id}
+                  data-testid={`analytics-top-${id}`}
+                  onClick={() => setTopMetric(id)}
+                  className={`rounded-md border px-2 py-1 text-[10px] font-medium ${topMetric === id ? 'border-wa-dark bg-wa-dark text-white' : 'border-zinc-300 bg-white hover:bg-zinc-50'}`}
+                >{lbl}</button>
+              ))}
+            </div>
+          </div>
+          {top.length === 0 && <div className="py-6 text-center text-xs text-zinc-500">No data yet.</div>}
+          {top.length > 0 && (
+            <div className="space-y-1.5">
+              {top.map((row, i) => {
+                const max = Math.max(1, ...top.map(r => r.value));
+                const pct = (row.value / max) * 100;
+                return (
+                  <div key={row.tenant_id} className="grid grid-cols-[20px_1fr_120px] items-center gap-2 text-xs">
+                    <span className="font-mono text-zinc-400">#{i + 1}</span>
+                    <div>
+                      <div className="font-medium text-zinc-900 truncate">{row.company_name}</div>
+                      <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-zinc-100">
+                        <div className="h-full rounded-full bg-wa-dark" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                    <div className="text-right font-mono text-zinc-700">
+                      {topMetric === 'messages' ? row.value.toLocaleString() : fmtINR(row.value)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FunnelRow({ label, value, max, accent }) {
+  const pct = max ? Math.round((value / max) * 100) : 0;
+  return (
+    <div>
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-zinc-700">{label}</span>
+        <span className={`font-mono ${accent || 'text-zinc-700'}`}>{value} · {pct}%</span>
+      </div>
+      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-zinc-100">
+        <div className="h-full rounded-full bg-wa-dark" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+
+
 export default function AdminConsole() {
   const [tab, setTab] = useState('overview');
 
@@ -494,6 +711,7 @@ export default function AdminConsole() {
 
       <div>
         {tab === 'overview' && <Overview />}
+        {tab === 'analytics' && <AnalyticsTab />}
         {tab === 'tenants' && <Tenants />}
         {tab === 'users' && <UsersList />}
         {tab === 'subscriptions' && <Subscriptions />}

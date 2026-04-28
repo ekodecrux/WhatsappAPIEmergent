@@ -291,6 +291,19 @@ async def twilio_inbound(request: Request):
     msg_doc.pop("_id", None)
     await ws_manager.broadcast(tenant_id, {"type": "message", "conversation_id": conv["id"], "message": msg_doc})
 
+    try:
+        from erp_dispatcher import dispatch_event
+        await dispatch_event(db, tenant_id, "message.received", {
+            "id": msg_doc["id"], "conversation_id": conv["id"],
+            "from_phone": customer_phone, "content": body,
+            "media_url": media_url, "media_type": media_type,
+            "sentiment": sentiment.get("sentiment"),
+            "lead_score": sentiment.get("lead_score", 50),
+            "provider": "twilio",
+        })
+    except Exception as e:
+        print(f"[erp_dispatch] twilio inbound: {e}")
+
     await db.conversations.update_one(
         {"id": conv["id"]},
         {"$set": {"sentiment": sentiment.get("sentiment"), "lead_score": sentiment.get("lead_score", 50)}},
@@ -339,6 +352,17 @@ async def twilio_status(request: Request):
     status = form.get("MessageStatus", "")
     if sid:
         await db.messages.update_one({"message_id": sid}, {"$set": {"status": status}})
+        msg = await db.messages.find_one({"message_id": sid}, {"_id": 0})
+        if msg:
+            try:
+                from erp_dispatcher import dispatch_event
+                await dispatch_event(db, msg["tenant_id"], "message.status", {
+                    "id": msg["id"], "conversation_id": msg.get("conversation_id"),
+                    "provider_id": sid, "status": status,
+                    "to_phone": msg.get("to_phone"),
+                })
+            except Exception as e:
+                print(f"[erp_dispatch] twilio status: {e}")
     return {"ok": True}
 
 
@@ -392,6 +416,16 @@ async def meta_webhook_inbound(request: Request):
                     status = st.get("status")
                     if msg_id and status:
                         await db.messages.update_one({"message_id": msg_id}, {"$set": {"status": status}})
+                        msg = await db.messages.find_one({"message_id": msg_id}, {"_id": 0})
+                        if msg:
+                            try:
+                                from erp_dispatcher import dispatch_event
+                                await dispatch_event(db, msg["tenant_id"], "message.status", {
+                                    "id": msg["id"], "provider_id": msg_id, "status": status,
+                                    "conversation_id": msg.get("conversation_id"),
+                                })
+                            except Exception as e:
+                                print(f"[erp_dispatch] meta status: {e}")
 
                 # Inbound messages
                 for m in value.get("messages", []) or []:
@@ -454,6 +488,16 @@ async def meta_webhook_inbound(request: Request):
                     await db.messages.insert_one(msg_doc)
                     msg_doc.pop("_id", None)
                     await ws_manager.broadcast(tenant_id, {"type": "message", "conversation_id": conv["id"], "message": msg_doc})
+
+                    try:
+                        from erp_dispatcher import dispatch_event
+                        await dispatch_event(db, tenant_id, "message.received", {
+                            "id": msg_doc["id"], "conversation_id": conv["id"],
+                            "from_phone": customer_phone, "content": text_body,
+                            "provider": "meta_cloud", "provider_id": sid,
+                        })
+                    except Exception as e:
+                        print(f"[erp_dispatch] meta inbound: {e}")
 
                     try:
                         from flow_engine import trigger_or_continue
