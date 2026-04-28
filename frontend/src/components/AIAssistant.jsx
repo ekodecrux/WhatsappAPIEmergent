@@ -21,11 +21,46 @@ const ACTION_LABEL = {
   raise_ticket: 'Raise this ticket',
 };
 
-const SUGGESTED = [
+const SUGGESTED_BY_ROUTE = {
+  '/app': [
+    'How do I send my first WhatsApp message?',
+    'Walk me through setting up a chatbot',
+    'Show me how to import leads from CSV',
+  ],
+  '/app/whatsapp': [
+    'Why aren\'t my Twilio sandbox messages delivering?',
+    'Help me connect my own Meta WhatsApp account',
+    'Send a test message',
+  ],
+  '/app/campaigns': [
+    'Draft a Diwali sale campaign for me',
+    'How do A/B tests work?',
+    'Why is my campaign paused?',
+  ],
+  '/app/flows': [
+    'Design a chatbot for restaurant reservations',
+    'Build a lead qualification bot',
+    'How do I share my chatbot with customers?',
+  ],
+  '/app/wallet': [
+    'How do I top up my wallet?',
+    'What\'s the difference between Wallet and BYOC?',
+    'How much does each message cost?',
+  ],
+  '/app/leads': [
+    'How do I import leads from a spreadsheet?',
+    'What is lead scoring?',
+  ],
+  '/app/chat': [
+    'How do I auto-reply to customers?',
+    'Can the bot answer in my customer\'s language?',
+  ],
+};
+
+const DEFAULT_SUGGESTED = [
   'How do I create my first campaign?',
-  'Design a chatbot flow for restaurant reservations',
-  'Why aren\'t my Twilio sandbox messages delivering?',
-  'Send a test message to +91…',
+  'Build me a chatbot for my business',
+  'Why aren\'t messages delivering?',
 ];
 
 export default function AIAssistant() {
@@ -34,15 +69,25 @@ export default function AIAssistant() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
+  const [tips, setTips] = useState({ tips: [], summary: '' });
   const [messages, setMessages] = useState([
-    { role: 'assistant', content: `Hi ${user?.full_name?.split(' ')[0] || 'there'} — I'm your wabridge AI assistant. Ask me anything, or tell me what to do.`, type: 'text' },
+    { role: 'assistant', content: `Hi ${user?.full_name?.split(' ')[0] || 'there'}! I'm your AI guide. I can answer questions, draft campaigns or chatbots, and even do tasks for you. What would you like to do?`, type: 'text' },
   ]);
   const [busy, setBusy] = useState(false);
   const scrollRef = useRef(null);
 
+  // Load contextual tips for the current route
+  useEffect(() => {
+    api.get(`/assistant/tips?route=${encodeURIComponent(location.pathname)}`)
+      .then(({ data }) => setTips(data))
+      .catch(() => {});
+  }, [location.pathname]);
+
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, open]);
+
+  const SUGGESTED = SUGGESTED_BY_ROUTE[location.pathname] || DEFAULT_SUGGESTED;
 
   const send = async (text) => {
     const msg = (text ?? input).trim();
@@ -132,9 +177,15 @@ export default function AIAssistant() {
         <button
           data-testid="ai-assistant-open"
           onClick={() => setOpen(true)}
-          className="fixed bottom-5 right-5 z-40 inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-wa-dark to-wa-mid px-4 py-3 text-sm font-medium text-white shadow-lg transition hover:scale-[1.02] hover:shadow-xl"
+          className="group fixed bottom-5 right-5 z-40 inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-wa-dark to-wa-mid px-5 py-3.5 text-sm font-medium text-white shadow-xl transition hover:scale-[1.04] hover:shadow-2xl"
         >
-          <Sparkles className="h-4 w-4" /> Ask AI
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-wa-light opacity-75"></span>
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-wa-light"></span>
+          </span>
+          <Sparkles className="h-4 w-4" />
+          <span className="hidden sm:inline">Ask AI · Need help?</span>
+          <span className="sm:hidden">Ask AI</span>
         </button>
       )}
 
@@ -154,6 +205,18 @@ export default function AIAssistant() {
           </div>
 
           <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-4">
+            {tips.tips?.length > 0 && messages.length <= 1 && (
+              <div className="rounded-md border border-wa-light/30 bg-gradient-to-br from-wa-dark/5 to-wa-mid/5 p-3" data-testid="ai-page-tips">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-wa-dark inline-flex items-center gap-1">
+                  <Sparkles className="h-3 w-3" /> Quick tips for this page
+                </div>
+                <ul className="mt-1.5 space-y-0.5">
+                  {tips.tips.map((tip, i) => (
+                    <li key={i} className="text-[11px] leading-relaxed text-zinc-700">• {tip}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {messages.map((m, i) => {
               if (m.role === 'user') {
                 return (

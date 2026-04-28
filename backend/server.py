@@ -44,6 +44,8 @@ async def lifespan(app: FastAPI):
     await db.marketplace_templates.create_index([("category", 1)])
     await db.support_tickets.create_index([("tenant_id", 1), ("created_at", -1)])
     await db.support_tickets.create_index([("status", 1), ("priority", 1)])
+    await db.wallet_transactions.create_index([("tenant_id", 1), ("created_at", -1)])
+    await db.wallet_transactions.create_index([("type", 1), ("created_at", -1)])
 
     # Seed superadmin user (idempotent)
     try:
@@ -119,6 +121,7 @@ from routers import marketplace as r_marketplace  # noqa: E402
 from routers import admin as r_admin  # noqa: E402
 from routers import support as r_support  # noqa: E402
 from routers import assistant as r_assistant  # noqa: E402
+from routers import wallet as r_wallet  # noqa: E402
 
 api_router.include_router(r_auth.router)
 api_router.include_router(r_otp.router)
@@ -134,6 +137,7 @@ api_router.include_router(r_marketplace.router)
 api_router.include_router(r_admin.router)
 api_router.include_router(r_support.router)
 api_router.include_router(r_assistant.router)
+api_router.include_router(r_wallet.router)
 
 app.include_router(api_router)
 

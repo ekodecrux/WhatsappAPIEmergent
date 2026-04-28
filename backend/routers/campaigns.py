@@ -8,7 +8,7 @@ from server import db
 from models import CampaignIn, CampaignApprove, uid, now
 from helpers import (
     get_current_user, decrypt_text, audit_log,
-    send_whatsapp, update_usage, run_sync,
+    send_whatsapp, send_whatsapp_billed, update_usage, run_sync,
 )
 
 router = APIRouter(prefix="/campaigns", tags=["campaigns"])
@@ -206,12 +206,23 @@ async def _run_campaign(cid: str):
             mu = c.get("media_url")
             mt = c.get("media_type")
 
-        result = await run_sync(send_whatsapp, cred, phone, msg_text, mu, mt)
+        result = await send_whatsapp_billed(
+            db, c["tenant_id"], cred, phone, msg_text, mu, mt,
+            category="marketing", note=f"Campaign: {c.get('name', '')[:40]}",
+        )
         sent += 1
         if result.get("success"):
             delivered += 1
         else:
             failed += 1
+            # If wallet ran dry, pause the campaign and stop processing
+            if (result.get("billing") or {}).get("reason") == "insufficient_balance":
+                await db.campaigns.update_one(
+                    {"id": cid},
+                    {"$set": {"status": "paused", "paused_reason": "insufficient_wallet_balance",
+                              "sent_count": sent, "delivered_count": delivered, "failed_count": failed}},
+                )
+                return
 
         # Track in conversations & messages
         conv = await db.conversations.find_one(

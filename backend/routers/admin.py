@@ -109,6 +109,8 @@ async def list_tenants(
             "trial_days_left": trial_days_left(t),
             "last_login": (last_user or {}).get("last_login"),
             "primary_email": (last_user or {}).get("email"),
+            "wallet_balance_inr": float(t.get("wallet_balance_inr") or 0.0),
+            "billing_mode": t.get("billing_mode") or "byoc",
         })
     return out
 

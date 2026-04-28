@@ -117,7 +117,12 @@ async def _load_credential(tenant_id: str, cred_id: str) -> dict:
 @router.post("/send")
 async def send_one(payload: SendMessageIn, current=Depends(get_current_user)):
     cred = await _load_credential(current["tenant_id"], payload.credential_id)
-    result = await run_sync(send_whatsapp, cred, payload.to_phone, payload.content, payload.media_url, payload.media_type)
+    from helpers import send_whatsapp_billed
+    result = await send_whatsapp_billed(
+        db, current["tenant_id"], cred, payload.to_phone, payload.content,
+        payload.media_url, payload.media_type, category="marketing",
+        note="Manual /send",
+    )
 
     # Track conversation
     conv = await db.conversations.find_one(

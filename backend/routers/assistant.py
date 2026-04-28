@@ -37,25 +37,63 @@ PAGE_HELP = {
     "/app/analytics": "Analytics shows funnel + source breakdown across leads, campaigns and conversations.",
     "/app/delivery": "Delivery Status is the per-message Twilio webhook tracker — see what was delivered, queued or failed.",
     "/app/billing": "Subscription is your Razorpay-powered plan upgrade flow.",
+    "/app/wallet": "Wallet is where you top up credits and choose between 'Wallet' (we handle Meta) or 'BYOC' (you connect your own Meta WABA).",
     "/app/integrations": "ERP & API gives you API keys to send WhatsApp messages from your CRM/ERP, plus outbound webhooks.",
     "/app/team": "Team invites users to your tenant and manages roles.",
     "/app/support": "Support is where you raise and track tickets with our team.",
+    "/app/admin": "Super Admin Console — manage every tenant, plans, subscriptions, and tickets across the platform.",
 }
 
 
-SYS_PROMPT = """You are wabridge's in-app AI assistant. wabridge is a B2B WhatsApp marketing & chatbot SaaS.
+# Quick non-IT-friendly hints shown on first visit per page
+PAGE_TIPS = {
+    "/app": [
+        "Press 'Ask AI' anytime — I can draft campaigns or flows for you",
+        "Connect WhatsApp first → then create a campaign or flow",
+    ],
+    "/app/whatsapp": [
+        "Pick 'Twilio Sandbox' for instant testing (no Meta account needed)",
+        "Use the Test Send button to confirm a recipient receives messages",
+    ],
+    "/app/campaigns": [
+        "Pick a template instead of typing the message every time",
+        "Add A/B variants to test 2 messages on the same audience",
+    ],
+    "/app/flows": [
+        "Click 'Generate flow' and tell me what your bot should do — I'll build it",
+        "After publishing, share the QR code so customers can WhatsApp you",
+    ],
+    "/app/wallet": [
+        "Top up ₹500 to send ~588 marketing messages",
+        "Service messages (replies within 24h) are FREE — no wallet deduction",
+    ],
+    "/app/chat": [
+        "Sentiment + AI reply suggestions appear on every inbound message",
+        "Languages are auto-detected — your bot replies in the customer's language",
+    ],
+    "/app/leads": [
+        "Upload a CSV to import 1000s of leads at once",
+        "Score leads with the AI sentiment of their last message",
+    ],
+}
 
-You are speaking to a SaaS tenant user. Help them with:
-- "How do I…" questions about wabridge features (campaigns, flows, chat, leads, billing, integrations).
-- Drafting a campaign message, naming, or planning recipients.
-- Designing a chatbot flow (you can request its creation).
+
+SYS_PROMPT = """You are wabridge's friendly in-app guide. wabridge is a B2B WhatsApp marketing & chatbot SaaS used by schools, clinics, retailers, real-estate firms, and small businesses (often non-technical owners).
+
+Your tone: warm, simple, confident. NEVER use jargon. Pretend the user has never seen a WhatsApp API before.
+Always answer in 1-3 short sentences. Then offer the next concrete action.
+
+You can help with:
+- "How do I…" guidance: walk users through the right page, in plain English (e.g., "Go to Campaigns → Click 'New campaign' → Pick a template").
+- Drafting a campaign message, flow, or template (you can offer to DO it via an action button).
 - Sending a test WhatsApp message.
-- If you cannot help, you may suggest creating a support ticket.
+- Recharging the wallet.
+- Creating a support ticket if you can't help.
 
 You MUST output a single JSON object — NO prose, NO markdown fences. Schema:
 {
   "type": "text" | "action" | "ticket",
-  "message": "<your reply, plain text, under 800 chars, no markdown, no emojis>",
+  "message": "<your reply, plain text, under 600 chars, no markdown, no emojis>",
   "action": {  // only when type=="action"
     "kind": "create_campaign" | "draft_flow" | "send_test_message" | "navigate" | "raise_ticket",
     "params": { ... }
@@ -63,19 +101,20 @@ You MUST output a single JSON object — NO prose, NO markdown fences. Schema:
 }
 
 Action params:
-- create_campaign: {name, message, recipients_hint}  (recipients_hint is a description; UI will let user pick the actual phones)
-- draft_flow: {description, triggers}  (triggers is a list of keywords)
-- send_test_message: {to_phone, text}  (E.164 phone with leading +)
-- navigate: {to}  (e.g., "/app/flows")
-- raise_ticket: {subject, description, priority}  (priority: low|normal|high|urgent)
+- create_campaign: {name, message, recipients_hint}
+- draft_flow: {description, triggers}
+- send_test_message: {to_phone, text}
+- navigate: {to}  (e.g., "/app/wallet", "/app/flows", "/app/whatsapp")
+- raise_ticket: {subject, description, priority}
 
 Rules:
-- If the user asks a "how do I" question, return type="text" with a direct answer.
-- If the user asks you to DO something (draft a campaign, design a flow, send a test), return type="action" with a sensible params guess.
-- If the question is outside scope, complaint, or ambiguous, return type="ticket" with a sensible subject/description (priority based on urgency).
-- Never make up internal IDs. Never claim to have completed an action — the UI will execute it on user's confirmation.
-- Use the page_context to tailor help: if user is on /app/flows and asks "how do I publish", answer specifically about publishing flows.
-- Plain language, friendly but concise. No emojis. No markdown.
+- "How do I…" / "Where do I…" → type="text" + suggest navigate action when useful.
+- "Help me draft / create / build / send / set up" → type="action" with concrete params (you fill in sensible defaults).
+- "I'm stuck", "this is broken", or anything you genuinely can't help with → type="ticket".
+- For non-IT users: always end with a suggested next step. Example: "Want me to draft this for you?" or "Tap the action button to do it now."
+- If user asks billing/wallet/credit questions, navigate them to /app/wallet.
+- If they ask about WhatsApp setup or sending, point them to /app/whatsapp.
+- Use the page_context to tailor advice. The user may not know technical terms — translate "WABA" → "WhatsApp Business account", "credentials" → "WhatsApp connection", etc.
 """
 
 
@@ -190,3 +229,13 @@ async def assistant_chat(payload: AssistantChatIn, current=Depends(get_current_u
         }
 
     return {"type": "text", "message": msg or "How can I help?"}
+
+
+@router.get("/tips")
+async def get_tips(route: str = "/app", current=Depends(get_current_user)):
+    """Return quick contextual tips for the current page (non-IT user friendly)."""
+    return {
+        "route": route,
+        "tips": PAGE_TIPS.get(route, []),
+        "summary": PAGE_HELP.get(route, ""),
+    }

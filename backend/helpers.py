@@ -258,6 +258,54 @@ def send_whatsapp(cred: dict, to_phone: str, body: str, media_url: str | None = 
     return send_whatsapp_via_twilio(sid, tok, cred.get("whatsapp_from", ""), to_phone, body, media_url)
 
 
+async def send_whatsapp_billed(db, tenant_id: str, cred: dict, to_phone: str, body: str,
+                               media_url: str | None = None, media_type: str | None = None,
+                               category: str = "marketing", note: str | None = None) -> dict:
+    """Wallet-aware send. Charges the tenant's wallet (if billing_mode='wallet') BEFORE sending,
+    refunds on provider failure. For 'byoc' tenants, no wallet interaction.
+    """
+    from wallet import charge_wallet, credit_wallet
+    charge = await charge_wallet(db, tenant_id, category=category, note=note,
+                                 meta={"to_phone": to_phone[-4:] if to_phone else ""})
+    # If we're on wallet plan and balance was insufficient, fail fast
+    if not charge.get("success") and charge.get("reason") == "insufficient_balance":
+        return {
+            "success": False,
+            "error": (
+                f"Wallet balance ₹{charge.get('balance', 0):.2f} is below the per-message price "
+                f"₹{charge.get('price', 0):.2f}. Please top up to continue."
+            ),
+            "billing": {"reason": "insufficient_balance", **charge},
+        }
+
+    # Send via provider
+    result = await run_sync(send_whatsapp, cred, to_phone, body, media_url, media_type)
+
+    # Refund if provider failed AND we actually charged
+    if charge.get("success") and (charge.get("price") or 0) > 0 and not result.get("success"):
+        try:
+            await credit_wallet(
+                db, tenant_id, float(charge["price"]),
+                type_="refund",
+                note=f"Refund (send failed: {(result.get('error') or '')[:60]})",
+                meta={"orig_txn_id": charge.get("txn_id")},
+            )
+        except Exception as e:
+            print(f"[wallet] refund failed: {e}")
+
+    # Pass-through billing data so callers can include in API responses
+    if charge.get("success"):
+        result["billing"] = {
+            "charged": True,
+            "price_inr": charge["price"],
+            "new_balance_inr": charge["new_balance"],
+            "category": charge.get("category"),
+        }
+    elif charge.get("reason") == "byoc":
+        result["billing"] = {"charged": False, "reason": "byoc"}
+    return result
+
+
 def verify_meta_webhook_signature(raw_body: bytes, signature_header: str | None) -> bool:
     """Verify Meta webhook X-Hub-Signature-256 against META_APP_SECRET.
 

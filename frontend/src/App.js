@@ -21,6 +21,7 @@ import Marketplace from './pages/Marketplace';
 import Delivery from './pages/Delivery';
 import AdminConsole from './pages/AdminConsole';
 import Support from './pages/Support';
+import WalletPage from './pages/WalletPage';
 import Analytics from './pages/Analytics';
 import Billing from './pages/Billing';
 import Integrations from './pages/Integrations';
@@ -58,6 +59,7 @@ export default function App() {
             <Route path="marketplace" element={<Marketplace />} />
             <Route path="delivery" element={<Delivery />} />
             <Route path="support" element={<Support />} />
+            <Route path="wallet" element={<WalletPage />} />
             <Route path="admin" element={<AdminConsole />} />
             <Route path="analytics" element={<Analytics />} />
             <Route path="billing" element={<Billing />} />

@@ -71,7 +71,12 @@ async def send_in_conversation(conv_id: str, payload: SendMessageIn, current=Dep
     if not cred:
         raise HTTPException(404, "Credential not found")
 
-    result = await run_sync(send_whatsapp, cred, conv["customer_phone"], payload.content, payload.media_url, payload.media_type)
+    from helpers import send_whatsapp_billed
+    result = await send_whatsapp_billed(
+        db, current["tenant_id"], cred, conv["customer_phone"], payload.content,
+        payload.media_url, payload.media_type, category="service",
+        note="Live chat reply",
+    )
 
     msg_doc = {
         "id": uid(),

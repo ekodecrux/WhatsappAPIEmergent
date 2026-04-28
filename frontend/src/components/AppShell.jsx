@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, MessageSquare, Send, Users, MessagesSquare, Bot,
   FileText, Workflow, BarChart3, CreditCard, Plug, UserPlus, BookOpen, Settings as SettingsIcon, LogOut,
-  Menu, X, ChevronRight, AlertTriangle, Sparkles, Store, Activity, Shield, LifeBuoy
+  Menu, X, ChevronRight, AlertTriangle, Sparkles, Store, Activity, Shield, LifeBuoy, Wallet
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import AIAssistant from './AIAssistant';
+import api from '../lib/api';
 
 const NAV = [
   { to: '/app', label: 'Overview', icon: LayoutDashboard, end: true },
@@ -20,6 +21,7 @@ const NAV = [
   { to: '/app/templates', label: 'Templates', icon: FileText },
   { to: '/app/analytics', label: 'Analytics', icon: BarChart3 },
   { to: '/app/delivery', label: 'Delivery Status', icon: Activity },
+  { to: '/app/wallet', label: 'Wallet', icon: Wallet },
   { to: '/app/billing', label: 'Subscription', icon: CreditCard },
   { to: '/app/integrations', label: 'ERP & API', icon: Plug },
   { to: '/app/team', label: 'Team', icon: UserPlus },
@@ -43,6 +45,16 @@ export default function AppShell() {
   const trial = user?.trial_days_left ?? 0;
   const onTrial = (user?.plan || 'trial') === 'trial';
   const initials = (user?.full_name || 'U').split(' ').map(s => s[0]).slice(0, 2).join('').toUpperCase();
+  const [wallet, setWallet] = useState(null);
+  useEffect(() => {
+    let timer;
+    const refresh = () => {
+      api.get('/wallet').then(({ data }) => setWallet(data)).catch(() => {});
+    };
+    refresh();
+    timer = setInterval(refresh, 30000);
+    return () => clearInterval(timer);
+  }, [location.pathname]);
 
   const onLogout = () => { logout(); navigate('/login'); };
 
@@ -177,6 +189,21 @@ export default function AppShell() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {wallet?.billing_mode === 'wallet' && (
+              <button
+                data-testid="topbar-wallet-pill"
+                onClick={() => navigate('/app/wallet')}
+                title={`Wallet balance · ${wallet.estimated_marketing_messages_left} marketing msgs left`}
+                className={`hidden items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium sm:inline-flex ${
+                  wallet.wallet_balance_inr < (wallet.low_balance_threshold_inr || 50)
+                    ? 'border-red-300 bg-red-50 text-red-800'
+                    : 'border-zinc-200 bg-white text-zinc-800 hover:bg-zinc-50'
+                }`}
+              >
+                <Wallet className="h-3.5 w-3.5" />
+                <span className="font-mono">₹{(wallet.wallet_balance_inr || 0).toFixed(2)}</span>
+              </button>
+            )}
             {onTrial && trial <= 5 && (
               <div className="hidden items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-700 sm:flex">
                 <AlertTriangle className="h-3.5 w-3.5" /> {trial} days left in trial
