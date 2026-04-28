@@ -4,88 +4,85 @@
 Create a complete end-to-end WhatsApp SaaS subscription platform that integrates with any ERP and supports bulk WhatsApp messaging for internal usage. Robust app with professional UI design. Positioned as the "world's first all-in-one WhatsApp marketing & bulk messaging platform with chatbot-based lead generation."
 
 ## Architecture
-- **Frontend**: React 19 (CRA) + Tailwind 3 + Shadcn UI primitives + Recharts + React Flow
+- **Frontend**: React 19 (CRA) + Tailwind 3 + Shadcn UI + Recharts + React Flow
 - **Backend**: FastAPI + Motor (MongoDB async)
 - **Auth**: JWT (bcrypt password hashing) + Email/SMS OTP
-- **DB**: MongoDB (multi-tenant via tenant_id scoping on all collections)
+- **DB**: MongoDB (multi-tenant via tenant_id scoping)
 - **Encryption**: Fernet AES-256 for WhatsApp credentials
 
 ## Integrations
-- **Twilio WhatsApp** (sandbox + own-account + Meta Cloud) — bulk send, inbound webhook, status callbacks
+- **Twilio WhatsApp** — sandbox + own-account, with sandbox opt-in helper UI + Test Send flow
+- **Meta WhatsApp Cloud API** — direct Graph API integration, validated before save, full webhook receiver (verify + inbound + statuses)
 - **Twilio Verify** — SMS OTP
-- **Groq** — `llama-3.3-70b-versatile` for AI reply suggestions, sentiment, lead scoring, flow scaffolding, **multilingual flow translations & language detection**
-- **Razorpay** — Test-mode subscription upgrade checkout + signature verify
-- **Gmail SMTP** — welcome emails on registration
+- **Groq** (`llama-3.3-70b-versatile`) — AI reply suggestions, sentiment, lead scoring, flow scaffolding, multilingual translations & language detection
+- **Razorpay** — Subscription checkout
+- **Gmail SMTP** — welcome emails
 
 ## Pages
 1. Landing
 2. Login / Register / Accept Invite
-3. Dashboard (KPIs, line chart, donut, plan usage, LIVE auto-refresh 7s)
-4. WhatsApp Setup (BYOC + sandbox simulator)
+3. Dashboard (KPIs, charts, LIVE auto-refresh)
+4. **WhatsApp Setup** (BYOC sandbox/own/Meta Cloud + opt-in helper + Test Send modal + simulate)
 5. Campaigns (CSV upload, pause/resume)
 6. Leads / CRM
-7. Live Chat (3-pane WhatsApp-style + AI co-pilot)
+7. Live Chat (WhatsApp-style + AI co-pilot + sentiment)
 8. Auto-replies
-9. Chatbot Flows (drag-and-drop visual builder, AI scaffold, QR codes, analytics, **multilingual translations**, **publish-to-marketplace**)
-10. **Marketplace** (browse/search/clone community templates)
-11. Templates (WhatsApp message templates)
+9. Chatbot Flows (visual builder, AI scaffold, QR codes, analytics, multilingual translations, publish-to-marketplace)
+10. Marketplace (browse/search/clone community templates)
+11. Templates
 12. Analytics
-13. **Delivery Status** (per-message Twilio status webhook dashboard with trend chart, status counts, per-campaign breakdown, recent failures)
-14. Subscription (Razorpay)
-15. ERP & API (keys, webhooks, audit log)
-16. Team (invites + roles)
+13. Delivery Status (per-message Twilio status webhook dashboard)
+14. Subscription
+15. ERP & API
+16. Team
 17. User Guide
 
 ## Key Backend Endpoints
-- `/api/auth/{register,login,me}`
-- `/api/otp/{send,verify}`
-- `/api/whatsapp/{credentials,send,templates,webhook/twilio,webhook/twilio/status,simulate-inbound}`
-- `/api/campaigns` (CRUD + approve/pause/resume)
-- `/api/leads` (CRUD + CSV import)
+- `/api/auth/{register,login,me}` and `/api/otp/{send,verify}`
+- `/api/whatsapp/credentials` — provider-aware: twilio_sandbox / twilio / meta_cloud (validated on save)
+- `/api/whatsapp/{send,test-send,simulate-inbound,sandbox-info,templates}`
+- `/api/whatsapp/webhook/twilio` (inbound + status)
+- **`/api/whatsapp/webhook/meta`** — GET verify (hub.challenge) + POST inbound/status
+- `/api/campaigns` (CRUD, approve/pause/resume) — provider-aware sending
 - `/api/conversations`, `/api/conversations/{id}/{messages,send,ai-suggestion}`
-- `/api/auto-reply-rules`
-- `/api/billing/{plans,subscription,orders,verify}`
+- `/api/dashboard/{overview,timeseries,status-breakdown,delivery}`
+- `/api/flows/...` — CRUD + AI scaffold + QR + analytics + **multilingual translations** (`_languages`, `/translate`, `/translations`)
+- `/api/marketplace/{templates,publish,clone,categories}`
 - `/api/integrations/{api-keys,webhooks,erp/send-message,erp/leads,audit-logs}`
-- `/api/dashboard/{overview,timeseries,status-breakdown,delivery}` ← **delivery NEW**
 - `/api/team/{invites,members}`
-- `/api/flows` (CRUD + publish/unpublish/test/analytics/qr/ai-scaffold)
-- **`/api/flows/_languages`** — list 23 supported translation languages
-- **`/api/flows/{fid}/translate`** — translate flow strings via Groq
-- **`/api/flows/{fid}/translations`** — list / GET / PUT-upsert / DELETE
-- **`/api/marketplace/templates`** — browse community flows (search/category/sort)
-- **`/api/marketplace/publish/{fid}`** — publish own flow
-- **`/api/marketplace/templates/{tpl_id}/clone`** — clone a community flow
-- **`/api/marketplace/categories`** — distinct categories
+- `/api/billing/{plans,subscription,orders,verify}`
 - `/api/ws?token=…` — real-time chat WebSocket
 
-## Test Status (latest: iter 6)
-- Backend: **22/23 pass** + 1 skipped (Groq 429 rate-limit during multi-translate suite — verified working via standalone curl)
-- Frontend: 100% — Marketplace, Delivery Status, Translations modal, Publish modal all render & function
-- Earlier iterations 1–5: 34/34 backend pass, frontend smoke verified
+## Test Status
+- **Iteration 7 (latest)**: 17/17 backend pass, 100% frontend — Meta validation, sandbox helper, Test Send, Meta webhooks
+- Iteration 6: 22/23 backend (1 skip Groq 429, verified standalone), 100% frontend — multilingual + marketplace + delivery
+- Iterations 1–5: 34/34 backend pass
 
 ## Demo Credentials
 - `demo@test.com` / `demo1234` — admin of "Demo Inc" tenant (pre-seeded)
 
 ## Implemented (chronological)
-- 2026-Q1: MVP shell, auth, Twilio sandbox, Razorpay, WebSocket chat, Groq AI suggestions, Team invites, OTP auth, CSV upload, campaign resume, React Flow visual builder with Condition/API nodes, flow analytics, QR generation, AI flow scaffolding, User Guide
-- 2026-Feb: Marketing copy repositioning (all-in-one WhatsApp marketing platform)
-- **2026-Feb (this session)**:
-  - **Multilingual flows** (P1) — auto-translate to 22 target languages via Groq, language detection on inbound, runtime localization in flow_engine, multilingual choice-edge matching
-  - **Template Marketplace** (P2) — publish/browse/clone community flows, downloads counter, search & sort
-  - **Delivery Status Dashboard** — totals, status breakdown, daily trend chart, per-campaign delivery rate, recent failures table
+- 2026-Q1: MVP shell, auth, Twilio sandbox, Razorpay, WebSocket chat, Groq AI, Team invites, OTP, CSV upload, campaign resume, React Flow visual builder, flow analytics, QR generation, AI scaffolding, User Guide
+- 2026-Feb: Marketing copy repositioning
+- 2026-Feb: **Multilingual flows** (P1) + **Template Marketplace** (P2) + **Delivery Status Dashboard**
+- **2026-Apr (this session)**: 
+  - **Meta WhatsApp Cloud API integration** — direct Graph API send, validation-before-save, full webhook receiver (GET verify + POST inbound/status)
+  - **Provider-aware sending** — unified `send_whatsapp(cred, to, body)` dispatcher across send/campaigns/chat/flow_engine/integrations
+  - **Twilio Sandbox opt-in helper UI** — prominent banner with 4-step instructions, console deep-link
+  - **Test Send modal** — per-credential real-message test with provider error mapping (sandbox 63007/63015/63016/63018 → "join <keyword>" hint)
 
 ## Backlog
+- **P0 (security)**:
+  - Meta webhook X-Hub-Signature-256 HMAC verification (currently unauthenticated)
 - **P1**:
-  - Twilio Verify SMS OTP UI integration polish
-  - Rich media messages (image/document/audio attachments in chat & campaigns)
-  - Bulk translation (translate to multiple langs in one click)
-  - Marketplace publish-rate-limit / dedupe (prevent same flow being republished)
+  - Bulk-translate flows (one click → 5 languages)
+  - Rich media messages (image/document/audio attachments)
+  - DRY inbound handlers (`twilio_inbound` and `meta_webhook_inbound` share ~80% logic)
 - **P2**:
   - A/B test campaign messages
-  - Lead scoring history charts
-  - WebSocket-based marketplace updates (live "new template" feed)
   - Marketplace template ratings & reviews
-  - Replace native `<select>` with shadcn Select for visual consistency
+  - Lead scoring history charts
+  - Migrate `requests.post` in send_whatsapp_via_meta to `httpx.AsyncClient`
 - **P3**:
   - Mobile app shell
-  - Public API docs site (Redoc/Swagger themed)
+  - Public API docs site
