@@ -182,6 +182,14 @@ async def update_tenant(tid: str, payload: TenantUpdateIn, current=Depends(requi
         upd["trial_end_date"] = new_end.isoformat()
     if payload.notes is not None:
         upd["admin_notes"] = payload.notes
+    if payload.discount_pct is not None:
+        if payload.discount_pct < 0 or payload.discount_pct > 100:
+            raise HTTPException(400, "discount_pct must be between 0 and 100")
+        upd["discount_pct"] = float(payload.discount_pct)
+    if payload.billing_mode is not None:
+        if payload.billing_mode not in ("wallet", "byoc"):
+            raise HTTPException(400, "billing_mode must be 'wallet' or 'byoc'")
+        upd["billing_mode"] = payload.billing_mode
     upd["updated_at"] = now().isoformat()
 
     await db.tenants.update_one({"id": tid}, {"$set": upd})

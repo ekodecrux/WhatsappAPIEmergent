@@ -10,7 +10,7 @@ export default function Login() {
 
   const onSuccess = (data) => {
     setSession(data);
-    navigate('/app');
+    navigate(data?.is_superadmin ? '/app/admin' : '/app');
   };
 
   return (

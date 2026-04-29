@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 11 — Super-admin role separation + expanded Tenant Manage modal. ALL backend (20/20) and frontend critical flows pass. Super admin redirects to /app/admin, sees only the 6 platform sidebar items (Platform Console, Tenants, Subscriptions, Pricing & Discounts, Support Inbox, Analytics), Platform Owner badge, no wallet pill, no AI assistant. Route guards correctly redirect /app/whatsapp, /app/campaigns, /app/wallet, /app/integrations -> /app/admin. Deep-links ?tab=pricing/analytics/tickets render correctly. Analytics charts now show 90 visible bars (previous Recharts blank-panel bug from iteration_10 is fixed by switching to MiniBarChart with explicit h-32). Tenant Manage modal shows all 4 sections (Subscription, Wallet & discount, Per-message pricing override, Internal notes); discount_pct=18 and pricing_overrides.marketing=0.65 persist; manual credit +100 (600→700) and -50 (700→650) work. Tenant regression: demo@test.com lands on /app, full tenant nav + AI assistant visible. ZERO console errors / PAGEERROR.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Sidebar slug for 'Pricing & Discounts'", "issues": ["data-testid resolves to 'nav-pricing---discounts' (triple dash) due to label.replace(/\\s|\\/|&/g,'-') turning ' & ' into '---'. Cosmetic only — selector still works — but may be cleaner to collapse consecutive dashes."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration11_superadmin.py",
+    "/app/test_reports/pytest/iter11_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "AppShell.jsx line 109 — testid slug uses replace(/\\s|\\/|&/g,'-') which produces 'nav-pricing---discounts' for 'Pricing & Discounts'. Consider collapsing repeated dashes via .replace(/-+/g,'-') for cleaner testids.",
+    "AdminConsole.jsx is now ~976 lines — Overview, Tenants, Subscriptions, PricingTab, TicketInbox, AnalyticsTab, MiniBarChart, plus the manage modal. Above the 700-line guideline — recommend splitting into /pages/admin/{Overview,Tenants,Pricing,Tickets,Analytics}.jsx.",
+    "wallet.py manual_credit (line 178) — when amount is negative the conditional update via find_one_and_update with $gte filter is correct, but the audit_log call is reached even on the success path AFTER the inner branches; OK but ensure both branches log identically (they do). No issue.",
+    "admin.py update_tenant — extend_trial_days only validates plan == 'trial'; if user simultaneously sets plan=basic and extend_trial_days=7 it raises 400 (correct), but the error message could be clearer about the precedence."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration11_superadmin.py (new — 20 tests, ~2.4s)"
+  ],
+  "success_rate": {"backend": "100% (20/20)", "frontend": "100% (all critical flows)"},
+  "test_credentials": "demo@test.com / demo1234 (tenant) and superadmin@wabridge.com / superadmin123 (super admin) — both verified",
+  "seed_data_creation": "Modified Demo Inc (d7e4bbe1...) tenant: discount_pct cycled through 12/15/18, pricing_overrides.marketing cycled through 0.7/0.65, billing_mode set to wallet, plan toggled trial<->pro<->trial, admin_notes='TEST_iter11 internal note', wallet credited +100 then -50 (net +50). Net wallet balance change visible in modal: ₹600 -> ₹650.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Reusable backend test file at /app/backend/tests/test_iteration11_superadmin.py — 20 tests covering super-admin role check, PATCH /admin/tenants new fields (discount_pct clamp, billing_mode wallet/byoc), POST /wallet/admin/{tid}/credit ±, PATCH /wallet/admin/{tid}/pricing, plus tenant-side regression. Auth login response uses 'access_token' (NOT 'token'). /auth/me returns nested {user:{...is_superadmin}, tenant:{...}, trial_days_left}. AppShell sidebar testids use slug replace(/\\s|\\/|&/g,'-') so 'Pricing & Discounts' -> 'nav-pricing---discounts' (triple dash). Demo tenant ID = d7e4bbe1-b230-470b-98a4-9d30659d4d22. The previous iter10 Recharts blank-chart bug is RESOLVED — AnalyticsTab now uses a custom MiniBarChart component with fixed h-32 height.",
+  "rca of the issue": "No bugs found in this iteration. The previous iteration_10 Recharts blank-panel issue is resolved by switching from <ResponsiveContainer> (which collapsed to 0×0) to a custom MiniBarChart that uses fixed-height flex layout. Verified visually (90 bar elements rendered) and functionally (range switcher, top-tenants metric switcher all work)."
+}

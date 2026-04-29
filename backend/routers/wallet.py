@@ -109,10 +109,15 @@ async def topup_verify(payload: WalletVerifyIn, current=Depends(get_current_user
         return {"success": True, "already_credited": True}
 
     amount = float(order_doc.get("amount_inr") or 0)
+    # Apply tenant-level discount as bonus credit
+    tenant = await db.tenants.find_one({"id": current["tenant_id"]}, {"_id": 0, "discount_pct": 1})
+    discount_pct = float((tenant or {}).get("discount_pct") or 0)
+    bonus = round(amount * discount_pct / 100.0, 2) if discount_pct > 0 else 0.0
+    credit_amount = amount + bonus
     res = await credit_wallet(
-        db, current["tenant_id"], amount, "topup",
-        note=f"Razorpay top-up ₹{amount:.0f}",
-        meta={"razorpay_payment_id": payload.razorpay_payment_id},
+        db, current["tenant_id"], credit_amount, "topup",
+        note=f"Razorpay top-up ₹{amount:.0f}" + (f" + ₹{bonus:.0f} bonus ({discount_pct:.0f}% discount)" if bonus else ""),
+        meta={"razorpay_payment_id": payload.razorpay_payment_id, "amount_paid_inr": amount, "bonus_inr": bonus, "discount_pct": discount_pct},
     )
     await db.payment_orders.update_one(
         {"razorpay_order_id": payload.razorpay_order_id},

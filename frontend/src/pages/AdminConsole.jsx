@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../lib/api';
 import {
-  Shield, Users, Building2, CreditCard, LifeBuoy, BarChart3, Search, Filter, Power, RefreshCcw,
-  TrendingUp, AlertTriangle, MessageSquare, Workflow, Calendar, Plus, X, Save, Inbox,
+  Shield, Users, Building2, CreditCard, LifeBuoy, BarChart3, Search, RefreshCcw,
+  TrendingUp, AlertTriangle, MessageSquare, Workflow, X, Save, Inbox, Banknote,
+  Wallet, Percent, Plus, Minus,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -12,6 +14,7 @@ const TABS = [
   { id: 'tenants', label: 'Tenants', icon: Building2 },
   { id: 'users', label: 'Users', icon: Users },
   { id: 'subscriptions', label: 'Subscriptions', icon: CreditCard },
+  { id: 'pricing', label: 'Pricing & Discounts', icon: Banknote },
   { id: 'tickets', label: 'Support Inbox', icon: LifeBuoy },
 ];
 
@@ -122,6 +125,9 @@ function Tenants() {
   const [activeFilter, setActiveFilter] = useState('all');
   const [editing, setEditing] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [creditAmt, setCreditAmt] = useState('');
+  const [creditNote, setCreditNote] = useState('');
+  const [pricing, setPricing] = useState({ marketing: '', utility: '', authentication: '', service: '' });
 
   const load = async () => {
     const params = {};
@@ -133,6 +139,32 @@ function Tenants() {
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [planFilter, activeFilter]);
 
+  const openEdit = async (t) => {
+    // hydrate full details (pricing_overrides + discount_pct)
+    try {
+      const { data } = await api.get(`/admin/tenants/${t.id}`);
+      const full = data.tenant || {};
+      setEditing({
+        ...t, ...full,
+        _origPlan: t.plan, _origActive: t.is_active, _origMode: full.billing_mode || t.billing_mode || 'byoc',
+        extend_trial_days: 0,
+        notes: full.admin_notes || '',
+        discount_pct: full.discount_pct || 0,
+        billing_mode: full.billing_mode || t.billing_mode || 'byoc',
+      });
+      const po = full.pricing_overrides || {};
+      setPricing({
+        marketing: po.marketing ?? '',
+        utility: po.utility ?? '',
+        authentication: po.authentication ?? '',
+        service: po.service ?? '',
+      });
+      setCreditAmt(''); setCreditNote('');
+    } catch {
+      toast.error('Could not load tenant details');
+    }
+  };
+
   const submitEdit = async () => {
     if (!editing) return;
     setBusy(true);
@@ -142,7 +174,28 @@ function Tenants() {
       if (editing.is_active !== editing._origActive) body.is_active = editing.is_active;
       if (editing.extend_trial_days) body.extend_trial_days = Number(editing.extend_trial_days);
       if (editing.notes != null) body.notes = editing.notes;
-      await api.patch(`/admin/tenants/${editing.id}`, body);
+      if (Number(editing.discount_pct) !== Number(editing._origDiscount || 0)) body.discount_pct = Number(editing.discount_pct);
+      if (editing.billing_mode !== editing._origMode) body.billing_mode = editing.billing_mode;
+      if (Object.keys(body).length) {
+        await api.patch(`/admin/tenants/${editing.id}`, body);
+      }
+      // Apply manual credit/debit if entered
+      if (creditAmt && Number(creditAmt) !== 0) {
+        await api.post(`/wallet/admin/${editing.id}/credit`, {
+          amount_inr: Number(creditAmt),
+          note: creditNote || `Adjustment by platform admin`,
+        });
+      }
+      // Apply pricing overrides if any field non-empty
+      const po = {};
+      ['marketing', 'utility', 'authentication', 'service'].forEach(k => {
+        if (pricing[k] !== '' && pricing[k] != null && !Number.isNaN(Number(pricing[k]))) {
+          po[k] = Number(pricing[k]);
+        }
+      });
+      if (Object.keys(po).length) {
+        await api.patch(`/wallet/admin/${editing.id}/pricing`, po);
+      }
       toast.success('Tenant updated');
       setEditing(null);
       load();
@@ -186,15 +239,16 @@ function Tenants() {
               <th className="px-3 py-2.5 text-left font-semibold">Company</th>
               <th className="px-3 py-2.5 text-left font-semibold">Plan</th>
               <th className="px-3 py-2.5 text-left font-semibold">Trial</th>
+              <th className="px-3 py-2.5 text-right font-semibold">Wallet</th>
               <th className="px-3 py-2.5 text-right font-semibold">Users</th>
               <th className="px-3 py-2.5 text-right font-semibold">Msgs</th>
+              <th className="px-3 py-2.5 text-left font-semibold">Mode</th>
               <th className="px-3 py-2.5 text-left font-semibold">Status</th>
-              <th className="px-3 py-2.5 text-left font-semibold">Created</th>
               <th className="px-3 py-2.5 text-right font-semibold"></th>
             </tr>
           </thead>
           <tbody data-testid="admin-tenant-list">
-            {list.length === 0 && <tr><td colSpan={8} className="px-3 py-8 text-center text-zinc-500">No tenants found.</td></tr>}
+            {list.length === 0 && <tr><td colSpan={9} className="px-3 py-8 text-center text-zinc-500">No tenants found.</td></tr>}
             {list.map(t => (
               <tr key={t.id} className="border-b border-zinc-100 last:border-0">
                 <td className="px-3 py-2.5">
@@ -205,19 +259,22 @@ function Tenants() {
                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${PLAN_BADGE[t.plan] || 'bg-zinc-100'}`}>{t.plan}</span>
                 </td>
                 <td className="px-3 py-2.5 text-zinc-700">{t.plan === 'trial' ? `${t.trial_days_left}d left` : '—'}</td>
+                <td className="px-3 py-2.5 text-right font-mono text-zinc-700">{fmtINR(t.wallet_balance_inr || 0)}</td>
                 <td className="px-3 py-2.5 text-right font-mono">{t.users_count || 0}</td>
                 <td className="px-3 py-2.5 text-right font-mono">{(t.messages_sent || 0).toLocaleString()}</td>
+                <td className="px-3 py-2.5">
+                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] uppercase tracking-wider ${t.billing_mode === 'wallet' ? 'bg-purple-100 text-purple-800' : 'bg-zinc-100 text-zinc-700'}`}>{t.billing_mode || 'byoc'}</span>
+                </td>
                 <td className="px-3 py-2.5">
                   <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${t.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                     <span className={`h-1.5 w-1.5 rounded-full ${t.is_active ? 'bg-green-600' : 'bg-red-600'}`} />
                     {t.is_active ? 'Active' : 'Suspended'}
                   </span>
                 </td>
-                <td className="px-3 py-2.5 text-zinc-500">{(t.created_at || '').slice(0, 10)}</td>
                 <td className="px-3 py-2.5 text-right">
                   <button
                     data-testid={`admin-edit-tenant-${t.id}`}
-                    onClick={() => setEditing({ ...t, _origPlan: t.plan, _origActive: t.is_active, extend_trial_days: 0, notes: t.admin_notes || '' })}
+                    onClick={() => openEdit(t)}
                     className="rounded-md border border-zinc-300 px-2 py-1 text-[11px] hover:bg-zinc-50"
                   >Manage</button>
                 </td>
@@ -229,44 +286,109 @@ function Tenants() {
 
       {editing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-md border border-zinc-200 bg-white p-6">
+          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-md border border-zinc-200 bg-white p-6">
             <div className="mb-4 flex items-center justify-between">
-              <h3 className="font-display text-lg font-semibold inline-flex items-center gap-2"><Building2 className="h-4 w-4" /> {editing.company_name}</h3>
+              <h3 className="font-display text-lg font-semibold inline-flex items-center gap-2">
+                <Building2 className="h-4 w-4" /> {editing.company_name}
+              </h3>
               <button onClick={() => setEditing(null)}><X className="h-4 w-4" /></button>
             </div>
-            <div className="space-y-3 text-sm">
-              <div>
-                <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Plan</label>
-                <select value={editing.plan} onChange={(e) => setEditing({ ...editing, plan: e.target.value })} className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" data-testid="admin-edit-plan">
-                  <option value="trial">Trial</option>
-                  <option value="basic">Basic — ₹999</option>
-                  <option value="pro">Pro — ₹2,999</option>
-                  <option value="enterprise">Enterprise — ₹9,999</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Extend trial by (days)</label>
-                <input type="number" min={0} max={90} value={editing.extend_trial_days || 0} onChange={(e) => setEditing({ ...editing, extend_trial_days: e.target.value })} className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" data-testid="admin-edit-extend" />
-              </div>
-              <div className="flex items-center justify-between rounded-md border border-zinc-200 px-3 py-2">
-                <span className="text-zinc-700">Tenant active</span>
-                <button
-                  data-testid="admin-edit-active"
-                  onClick={() => setEditing({ ...editing, is_active: !editing.is_active })}
-                  className={`relative h-5 w-9 rounded-full transition ${editing.is_active ? 'bg-green-600' : 'bg-zinc-300'}`}
-                >
-                  <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition ${editing.is_active ? 'left-4' : 'left-0.5'}`} />
-                </button>
-              </div>
-              <div>
-                <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Internal notes</label>
-                <textarea rows={2} value={editing.notes || ''} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" placeholder="Optional notes for the team…" />
-              </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {/* Subscription */}
+              <section className="space-y-3 rounded-md border border-zinc-200 p-4">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 inline-flex items-center gap-1.5"><CreditCard className="h-3 w-3" /> Subscription</div>
+                <div>
+                  <label className="text-xs text-zinc-600">Assign plan</label>
+                  <select value={editing.plan} onChange={(e) => setEditing({ ...editing, plan: e.target.value })} className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" data-testid="admin-edit-plan">
+                    <option value="trial">Trial · ₹0 / 14 days</option>
+                    <option value="basic">Basic · ₹999 / mo</option>
+                    <option value="pro">Pro · ₹2,999 / mo</option>
+                    <option value="enterprise">Enterprise · ₹9,999 / mo</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-zinc-600">Extend trial by (days)</label>
+                  <input type="number" min={0} max={90} value={editing.extend_trial_days || 0} onChange={(e) => setEditing({ ...editing, extend_trial_days: e.target.value })} className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" data-testid="admin-edit-extend" />
+                </div>
+                <div className="flex items-center justify-between rounded-md border border-zinc-200 px-3 py-2">
+                  <span className="text-xs text-zinc-700">Tenant active</span>
+                  <button
+                    data-testid="admin-edit-active"
+                    onClick={() => setEditing({ ...editing, is_active: !editing.is_active })}
+                    className={`relative h-5 w-9 rounded-full transition ${editing.is_active ? 'bg-green-600' : 'bg-zinc-300'}`}
+                  >
+                    <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition ${editing.is_active ? 'left-4' : 'left-0.5'}`} />
+                  </button>
+                </div>
+              </section>
+
+              {/* Wallet & Discount */}
+              <section className="space-y-3 rounded-md border border-zinc-200 p-4">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 inline-flex items-center gap-1.5"><Wallet className="h-3 w-3" /> Wallet &amp; discount</div>
+                <div>
+                  <label className="text-xs text-zinc-600">Billing mode</label>
+                  <select value={editing.billing_mode} onChange={(e) => setEditing({ ...editing, billing_mode: e.target.value })} className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm">
+                    <option value="byoc">BYOC (tenant pays Twilio/Meta directly)</option>
+                    <option value="wallet">Wallet (we bill per-message via prepaid balance)</option>
+                  </select>
+                </div>
+                <div className="rounded-md bg-zinc-50 p-2 text-xs">
+                  <div className="text-zinc-500">Current balance</div>
+                  <div className="font-mono text-base font-semibold">{fmtINR(editing.wallet_balance_inr || 0)}</div>
+                </div>
+                <div>
+                  <label className="text-xs text-zinc-600">Manual credit / debit (₹) — use negative to debit</label>
+                  <div className="mt-1 grid grid-cols-[1fr_auto_auto] gap-1.5">
+                    <input type="number" data-testid="admin-credit-amt" value={creditAmt} onChange={(e) => setCreditAmt(e.target.value)} placeholder="500" className="rounded-md border border-zinc-300 px-3 py-2 text-sm" />
+                    <button type="button" onClick={() => setCreditAmt(String(Math.abs(Number(creditAmt) || 100)))} className="rounded-md border border-green-300 bg-green-50 px-2 text-xs text-green-800" title="Credit"><Plus className="h-3 w-3" /></button>
+                    <button type="button" onClick={() => setCreditAmt(String(-Math.abs(Number(creditAmt) || 100)))} className="rounded-md border border-red-300 bg-red-50 px-2 text-xs text-red-800" title="Debit"><Minus className="h-3 w-3" /></button>
+                  </div>
+                  <input type="text" value={creditNote} onChange={(e) => setCreditNote(e.target.value)} placeholder="Reason (optional)" className="mt-1.5 w-full rounded-md border border-zinc-300 px-3 py-2 text-xs" />
+                </div>
+                <div>
+                  <label className="text-xs text-zinc-600 inline-flex items-center gap-1"><Percent className="h-3 w-3" /> Bonus on top-ups (%)</label>
+                  <input type="number" min={0} max={100} step="0.5" data-testid="admin-discount-pct" value={editing.discount_pct} onChange={(e) => setEditing({ ...editing, discount_pct: e.target.value })} className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" />
+                  <p className="mt-1 text-[11px] text-zinc-500">When the tenant tops up ₹X, they receive ₹X + {Number(editing.discount_pct || 0)}% bonus credit.</p>
+                </div>
+              </section>
+
+              {/* Per-message pricing override */}
+              <section className="space-y-2 rounded-md border border-zinc-200 p-4 sm:col-span-2">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 inline-flex items-center gap-1.5"><Banknote className="h-3 w-3" /> Per-message pricing override (₹)</div>
+                <p className="text-[11px] text-zinc-500">Defaults: Marketing ₹0.85 · Utility ₹0.115 · Authentication ₹0.115 · Service ₹0. Leave blank to use default.</p>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {[
+                    ['marketing', 'Marketing', '0.85'],
+                    ['utility', 'Utility', '0.115'],
+                    ['authentication', 'Auth', '0.115'],
+                    ['service', 'Service', '0.00'],
+                  ].map(([k, lbl, ph]) => (
+                    <div key={k}>
+                      <label className="text-[10px] text-zinc-500">{lbl}</label>
+                      <input
+                        type="number" step="0.001" min={0}
+                        data-testid={`pricing-${k}`}
+                        value={pricing[k]}
+                        onChange={(e) => setPricing({ ...pricing, [k]: e.target.value })}
+                        placeholder={ph}
+                        className="mt-0.5 w-full rounded-md border border-zinc-300 px-2 py-1.5 text-xs font-mono"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              {/* Notes */}
+              <section className="space-y-2 rounded-md border border-zinc-200 p-4 sm:col-span-2">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Internal notes</div>
+                <textarea rows={2} value={editing.notes || ''} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" placeholder="Optional notes for the team…" />
+              </section>
             </div>
+
             <div className="mt-5 flex justify-end gap-2">
               <button onClick={() => setEditing(null)} className="rounded-md border border-zinc-300 px-3 py-2 text-sm">Cancel</button>
               <button data-testid="admin-edit-save" onClick={submitEdit} disabled={busy} className="inline-flex items-center gap-1.5 rounded-md bg-wa-dark px-3 py-2 text-sm font-medium text-white hover:bg-wa-mid disabled:opacity-50">
-                {busy ? 'Saving…' : <><Save className="h-3.5 w-3.5" /> Save</>}
+                {busy ? 'Saving…' : <><Save className="h-3.5 w-3.5" /> Save changes</>}
               </button>
             </div>
           </div>
@@ -342,6 +464,125 @@ function Subscriptions() {
     </div>
   );
 }
+
+// ============ Platform Pricing & Discounts Tab ============
+function PricingTab() {
+  const [revenue, setRevenue] = useState(null);
+  const [days, setDays] = useState(30);
+  const [tenants, setTenants] = useState([]);
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      api.get(`/wallet/admin/revenue?days=${days}`),
+      api.get('/admin/tenants'),
+    ]).then(([r, t]) => {
+      setRevenue(r.data);
+      setTenants(t.data);
+    }).finally(() => setLoading(false));
+  }, [days]);
+
+  const filtered = tenants.filter(t =>
+    !search || t.company_name?.toLowerCase().includes(search.toLowerCase()) || t.id.startsWith(search)
+  );
+  const withDiscount = filtered.filter(t => (t.discount_pct || 0) > 0);
+  const customPriced = filtered.filter(t => t.pricing_overrides && Object.keys(t.pricing_overrides).length > 0);
+
+  if (loading) return <div className="p-6 text-sm text-zinc-500">Loading pricing data…</div>;
+
+  return (
+    <div className="space-y-5" data-testid="admin-pricing-tab">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Top-up revenue" value={fmtINR(revenue?.topups_inr || 0)} sub={`${days}d window`} icon={TrendingUp} accent="text-green-700" />
+        <StatCard label="Wallet COGS" value={fmtINR(revenue?.message_debits_inr || 0)} sub="Outgoing message cost" icon={CreditCard} accent="text-red-700" />
+        <StatCard label="Approx margin" value={fmtINR(revenue?.approx_margin_inr || 0)} sub="Revenue − COGS" icon={Banknote} accent="text-purple-700" />
+        <StatCard label="Tenants on discount" value={withDiscount.length} sub={`${customPriced.length} on custom pricing`} icon={Percent} />
+      </div>
+
+      <div className="flex items-center justify-between gap-2">
+        <div className="relative max-w-md flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" />
+          <input
+            data-testid="pricing-search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search tenant…"
+            className="w-full rounded-md border border-zinc-300 bg-white py-2 pl-9 pr-3 text-sm"
+          />
+        </div>
+        <div className="flex gap-1">
+          {[7, 30, 90].map(d => (
+            <button
+              key={d}
+              onClick={() => setDays(d)}
+              className={`rounded-md border px-2.5 py-1 text-[11px] font-medium ${days === d ? 'border-wa-dark bg-wa-dark text-white' : 'border-zinc-300 bg-white hover:bg-zinc-50'}`}
+            >{d}d</button>
+          ))}
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-md border border-zinc-200 bg-white">
+        <table className="w-full text-xs">
+          <thead className="border-b border-zinc-200 bg-zinc-50 text-[10px] uppercase tracking-wider text-zinc-500">
+            <tr>
+              <th className="px-3 py-2.5 text-left">Company</th>
+              <th className="px-3 py-2.5 text-left">Plan</th>
+              <th className="px-3 py-2.5 text-left">Mode</th>
+              <th className="px-3 py-2.5 text-right">Wallet</th>
+              <th className="px-3 py-2.5 text-right">Top-up bonus</th>
+              <th className="px-3 py-2.5 text-left">Custom pricing</th>
+              <th className="px-3 py-2.5 text-right"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 && <tr><td colSpan={7} className="px-3 py-8 text-center text-zinc-500">No tenants.</td></tr>}
+            {filtered.map(t => {
+              const po = t.pricing_overrides || {};
+              const overrides = Object.keys(po).length;
+              return (
+                <tr key={t.id} className="border-b border-zinc-100 last:border-0">
+                  <td className="px-3 py-2.5 font-medium text-zinc-900">{t.company_name}</td>
+                  <td className="px-3 py-2.5">
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] uppercase ${PLAN_BADGE[t.plan] || 'bg-zinc-100'}`}>{t.plan}</span>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <span className={`rounded-full px-1.5 py-0.5 text-[10px] uppercase tracking-wider ${t.billing_mode === 'wallet' ? 'bg-purple-100 text-purple-800' : 'bg-zinc-100 text-zinc-700'}`}>{t.billing_mode || 'byoc'}</span>
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-mono">{fmtINR(t.wallet_balance_inr || 0)}</td>
+                  <td className="px-3 py-2.5 text-right">
+                    {(t.discount_pct || 0) > 0
+                      ? <span className="rounded-full bg-green-100 px-2 py-0.5 font-mono font-semibold text-green-800">+{t.discount_pct}%</span>
+                      : <span className="text-zinc-400">—</span>}
+                  </td>
+                  <td className="px-3 py-2.5 text-zinc-700">
+                    {overrides > 0 ? `${overrides} override${overrides > 1 ? 's' : ''}` : <span className="text-zinc-400">default</span>}
+                  </td>
+                  <td className="px-3 py-2.5 text-right">
+                    <button
+                      onClick={() => window.location.assign(`/app/admin?tab=tenants`)}
+                      className="rounded-md border border-zinc-300 px-2 py-1 text-[11px] hover:bg-zinc-50"
+                    >Adjust →</button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="rounded-md border border-zinc-200 bg-zinc-50 p-4 text-xs text-zinc-600">
+        <strong className="text-zinc-900">How pricing works:</strong> default per-conversation rates are
+        Marketing ₹0.85 · Utility ₹0.115 · Auth ₹0.115 · Service ₹0.
+        Override rates per-tenant in <em>Tenants → Manage</em>. The top-up bonus % gives the tenant extra
+        wallet credit on every Razorpay top-up — useful for promotional offers and enterprise discounts.
+      </div>
+    </div>
+  );
+}
+
+
 
 function TicketInbox() {
   const [list, setList] = useState([]);
@@ -682,18 +923,29 @@ function FunnelRow({ label, value, max, accent }) {
 
 
 export default function AdminConsole() {
-  const [tab, setTab] = useState('overview');
+  const location = useLocation();
+  const navigate = useNavigate();
+  const urlTab = new URLSearchParams(location.search).get('tab');
+  const [tab, setTab] = useState(urlTab || 'overview');
+  useEffect(() => {
+    if (urlTab && urlTab !== tab) setTab(urlTab);
+    // eslint-disable-next-line
+  }, [urlTab]);
+  const switchTab = (id) => {
+    setTab(id);
+    navigate(id === 'overview' ? '/app/admin' : `/app/admin?tab=${id}`, { replace: true });
+  };
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 p-6">
       <div className="flex items-end justify-between gap-3">
         <div>
           <h1 className="font-display text-3xl font-semibold tracking-tight inline-flex items-center gap-2">
-            <Shield className="h-6 w-6 text-purple-700" /> Super Admin Console
+            <Shield className="h-6 w-6 text-purple-700" /> Platform Console
           </h1>
-          <p className="mt-1 text-sm text-zinc-600">Platform-wide control: every tenant, every subscription, every ticket.</p>
+          <p className="mt-1 text-sm text-zinc-600">SaaS owner cockpit — every tenant, every subscription, every rupee.</p>
         </div>
-        <span className="hidden rounded-full bg-purple-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-purple-800 sm:inline-flex">Platform</span>
+        <span className="hidden rounded-full bg-purple-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-purple-800 sm:inline-flex">Platform Owner</span>
       </div>
 
       <div className="flex flex-wrap gap-1 border-b border-zinc-200" data-testid="admin-tabs">
@@ -701,7 +953,7 @@ export default function AdminConsole() {
           <button
             key={t.id}
             data-testid={`admin-tab-${t.id}`}
-            onClick={() => setTab(t.id)}
+            onClick={() => switchTab(t.id)}
             className={`inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition ${tab === t.id ? 'border-wa-dark text-wa-dark' : 'border-transparent text-zinc-600 hover:text-zinc-900'}`}
           >
             <t.icon className="h-3.5 w-3.5" /> {t.label}
@@ -715,6 +967,7 @@ export default function AdminConsole() {
         {tab === 'tenants' && <Tenants />}
         {tab === 'users' && <UsersList />}
         {tab === 'subscriptions' && <Subscriptions />}
+        {tab === 'pricing' && <PricingTab />}
         {tab === 'tickets' && <TicketInbox />}
       </div>
     </div>

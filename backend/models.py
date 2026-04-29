@@ -97,6 +97,8 @@ class TenantUpdateIn(BaseModel):
     is_active: bool | None = None
     extend_trial_days: int | None = None  # adds N days to trial_end_date
     notes: str | None = None
+    discount_pct: float | None = None  # 0-100, applied to wallet top-ups as bonus credit
+    billing_mode: str | None = None  # wallet | byoc
 
 
 # ===== AI Assistant =====
