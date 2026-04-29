@@ -111,6 +111,20 @@ Create a complete end-to-end WhatsApp SaaS subscription platform that integrates
   - `GET /message-mix?days=N` — outbound status breakdown (sent/delivered/read/failed/queued)
   - Frontend: new "Analytics" tab in Super Admin Console with daily bar charts, KPI cards, conversion funnel, top tenants leaderboard with metric switching, status mix bars, range buttons (7/30/90d)
 
+## Implemented (this session — Apr 2026 part 4 — Super Admin = Platform Owner)
+- **Role separation enforced** — when `is_superadmin=true`:
+  - Auto-redirect to `/app/admin` on login
+  - Sidebar shows ONLY platform menu (Platform Console / Tenants / Subscriptions / Pricing & Discounts / Support Inbox / Analytics) — tenant features hidden
+  - Hard route-guard sends superadmin away from any `/app/{tenant-page}` URL
+  - Topbar shows "Platform Owner" purple badge; no wallet pill, no AI assistant widget
+- **Tenants Manage modal — full SaaS-owner controls in one place:**
+  - **Subscription**: assign plan (trial/basic/pro/enterprise) without payment; extend trial; suspend/activate
+  - **Wallet & discount**: switch billing mode (BYOC ↔ wallet); see balance; manual credit/debit ± with reason; set top-up bonus % (e.g. 10% → tenant pays ₹1000, wallet credited ₹1100)
+  - **Per-message pricing override**: set custom Marketing/Utility/Auth/Service rates per tenant (defaults ₹0.85/₹0.115/₹0.115/₹0)
+  - **Internal notes** field
+- **New "Pricing & Discounts" tab** — platform-wide view: top-up revenue, wallet COGS, approx margin, # tenants on discount, # on custom pricing; per-tenant table with discount badges
+- **Backend**: `PATCH /admin/tenants/{tid}` now accepts `discount_pct` (0-100, validated) + `billing_mode` (wallet/byoc); `/wallet/topup/verify` applies tenant's `discount_pct` as bonus credit on every Razorpay top-up
+
 ## Backlog
 - **P1**:
   - Bulk-translate flows (1 click → 5 languages)
