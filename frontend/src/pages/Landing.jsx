@@ -22,7 +22,7 @@ const Feature = ({ icon: Icon, title, desc }) => (
   </div>
 );
 
-const PriceCard = ({ name, price, items, highlight, cta = 'Start free trial', tag }) => (
+const PriceCard = ({ name, price, items, highlight, cta = 'Get started', tag }) => (
   <div
     data-testid={`pricing-${name.toLowerCase()}`}
     className={`relative rounded-md border p-7 ${highlight ? 'border-green-700 bg-zinc-950 text-zinc-100' : 'border-zinc-200 bg-white'}`}
@@ -35,7 +35,7 @@ const PriceCard = ({ name, price, items, highlight, cta = 'Start free trial', ta
     <div className={`text-xs font-semibold uppercase tracking-[0.2em] ${highlight ? 'text-green-400' : 'text-wa-dark'}`}>{name}</div>
     <div className="mt-3 flex items-baseline gap-2">
       <span className="font-display text-4xl font-semibold tracking-tight">₹{price}</span>
-      <span className={highlight ? 'text-zinc-400' : 'text-zinc-500'}>/month</span>
+      <span className={highlight ? 'text-zinc-400' : 'text-zinc-500'}>{price === '0' ? '/forever' : '/month'}</span>
     </div>
     <ul className="mt-6 space-y-3 text-sm">
       {items.map((it) => (
@@ -110,7 +110,7 @@ export default function Landing() {
                 data-testid="hero-cta-trial"
                 className="inline-flex items-center gap-2 rounded-md bg-green-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-wa-mid"
               >
-                Start 14-day free trial <ArrowRight className="h-4 w-4" />
+                Start free <ArrowRight className="h-4 w-4" />
               </Link>
               <a href="#how" className="inline-flex items-center gap-2 rounded-md border border-zinc-300 bg-white px-5 py-3 text-sm font-medium text-zinc-800 hover:bg-zinc-50">
                 See how it works
@@ -239,7 +239,7 @@ export default function Landing() {
             </div>
             <ol className="space-y-6">
               {[
-                ['01', 'Create your workspace', 'Sign up for the 14-day free trial. No card, no commitment.'],
+                ['01', 'Create your workspace', 'Sign up on the Free plan in 30 seconds. No card, no commitment.'],
                 ['02', 'Connect WhatsApp', 'Use the Twilio sandbox to start instantly, or paste your own Meta Cloud credentials. Encrypted on save.'],
                 ['03', 'Import leads', 'Paste a list, upload a CSV or push from your ERP via API. Deduped automatically.'],
                 ['04', 'Compose & approve', 'Pick a template, draft a message, queue the campaign. Admin approves before send.'],
@@ -268,9 +268,9 @@ export default function Landing() {
             </h2>
           </div>
           <div className="grid gap-6 lg:grid-cols-3">
-            <PriceCard name="Basic" price="999" items={['5,000 messages / month', '1,000 leads', '1 WhatsApp number', 'Email support']} />
-            <PriceCard name="Pro" price="2,999" tag="Most popular" highlight items={['50,000 messages / month', '10,000 leads', '3 WhatsApp numbers', 'AI co-pilot', 'API & ERP webhooks', 'Priority support']} />
-            <PriceCard name="Enterprise" price="9,999" items={['500,000 messages / month', '100,000 leads', 'Unlimited numbers', 'SLA & onboarding', 'Audit log export']} />
+            <PriceCard name="Free" price="0" cta="Start free" items={['100 messages / month', '100 leads', '1 WhatsApp number', 'Community support']} />
+            <PriceCard name="Starter" price="499" cta="Choose Starter" items={['5,000 messages / month', '1,000 leads', '1 WhatsApp number', 'Email support']} />
+            <PriceCard name="Pro" price="999" tag="Most popular" highlight cta="Go Pro" items={['25,000 messages / month', '10,000 leads', '3 WhatsApp numbers', 'AI co-pilot', 'API & ERP webhooks', 'Priority support']} />
           </div>
         </div>
       </section>
@@ -315,7 +315,7 @@ export default function Landing() {
           <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
             <div>
               <h2 className="font-display text-3xl font-semibold tracking-tight sm:text-4xl">Ship your first WhatsApp campaign today.</h2>
-              <p className="mt-2 text-zinc-400">14 days free. Cancel anytime.</p>
+              <p className="mt-2 text-zinc-400">Free forever plan available. Upgrade anytime.</p>
             </div>
             <Link
               to="/register"

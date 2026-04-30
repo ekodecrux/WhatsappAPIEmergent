@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from server import db
 from models import CheckoutOrderIn, VerifyPaymentIn, uid, now
 from helpers import (
-    get_current_user, audit_log, PLANS, trial_days_left,
+    get_current_user, audit_log, PLANS, PLAN_ALIASES, resolve_plan, trial_days_left,
     create_razorpay_order, verify_razorpay_signature,
 )
 
@@ -23,9 +23,10 @@ async def list_plans():
 @router.get("/subscription")
 async def my_subscription(current=Depends(get_current_user)):
     tenant = await db.tenants.find_one({"id": current["tenant_id"]}, {"_id": 0})
-    plan = PLANS.get(tenant.get("plan", "trial"), {})
+    resolved = resolve_plan(tenant.get("plan", "free"))
+    plan = PLANS.get(resolved, {})
     return {
-        "plan": tenant.get("plan", "trial"),
+        "plan": resolved,
         "plan_details": plan,
         "trial_days_left": trial_days_left(tenant),
         "subscription_end": tenant.get("subscription_end_date"),
@@ -34,12 +35,13 @@ async def my_subscription(current=Depends(get_current_user)):
 
 @router.post("/orders")
 async def create_order(payload: CheckoutOrderIn, current=Depends(get_current_user)):
-    if payload.plan not in PLANS or payload.plan == "trial":
-        raise HTTPException(400, "Invalid plan")
-    plan = PLANS[payload.plan]
+    target = resolve_plan(payload.plan)
+    if target not in PLANS or target == "free":
+        raise HTTPException(400, "Invalid plan — use 'starter' or 'pro'")
+    plan = PLANS[target]
     receipt = f"{current['tenant_id'][:8]}-{int(now().timestamp())}"
     res = create_razorpay_order(plan["price_inr"], receipt, notes={
-        "tenant_id": current["tenant_id"], "plan": payload.plan,
+        "tenant_id": current["tenant_id"], "plan": target,
     })
     if not res.get("success"):
         raise HTTPException(500, f"Razorpay error: {res.get('error')}")
@@ -48,7 +50,7 @@ async def create_order(payload: CheckoutOrderIn, current=Depends(get_current_use
         "id": uid(),
         "tenant_id": current["tenant_id"],
         "user_id": current["id"],
-        "plan": payload.plan,
+        "plan": target,
         "amount_inr": plan["price_inr"],
         "razorpay_order_id": order["id"],
         "status": "created",
@@ -59,7 +61,7 @@ async def create_order(payload: CheckoutOrderIn, current=Depends(get_current_use
         "amount": order["amount"],
         "currency": order["currency"],
         "key_id": res["key_id"],
-        "plan": payload.plan,
+        "plan": target,
     }
 
 
@@ -70,7 +72,8 @@ async def verify_payment(payload: VerifyPaymentIn, current=Depends(get_current_u
     )
     if not is_valid:
         raise HTTPException(400, "Invalid signature")
-    plan = PLANS.get(payload.plan)
+    target = resolve_plan(payload.plan)
+    plan = PLANS.get(target)
     if not plan:
         raise HTTPException(400, "Invalid plan")
 
@@ -78,7 +81,7 @@ async def verify_payment(payload: VerifyPaymentIn, current=Depends(get_current_u
     await db.tenants.update_one(
         {"id": current["tenant_id"]},
         {"$set": {
-            "plan": payload.plan,
+            "plan": target,
             "subscription_end_date": end_at.isoformat(),
             "updated_at": now().isoformat(),
         }},
@@ -91,8 +94,8 @@ async def verify_payment(payload: VerifyPaymentIn, current=Depends(get_current_u
             "paid_at": now().isoformat(),
         }},
     )
-    await audit_log(current["tenant_id"], current["id"], "subscription_upgrade", payload.plan)
-    return {"success": True, "plan": payload.plan, "ends_at": end_at.isoformat()}
+    await audit_log(current["tenant_id"], current["id"], "subscription_upgrade", target)
+    return {"success": True, "plan": target, "ends_at": end_at.isoformat()}
 
 
 @router.get("/orders")

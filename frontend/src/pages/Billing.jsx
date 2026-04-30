@@ -79,9 +79,9 @@ export default function Billing() {
         <div className="flex flex-wrap items-center gap-4">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Current plan</div>
-            <div className="mt-1 font-display text-2xl font-semibold capitalize">{sub?.plan || 'trial'}</div>
+            <div className="mt-1 font-display text-2xl font-semibold capitalize">{sub?.plan || 'free'}</div>
             <div className="mt-1 text-xs text-zinc-500">
-              {sub?.plan === 'trial' ? `${sub?.trial_days_left} days left` : sub?.subscription_end ? `Renews ${new Date(sub.subscription_end).toLocaleDateString()}` : ''}
+              {(sub?.plan === 'free' || sub?.plan === 'trial') ? 'No expiry · upgrade anytime' : sub?.subscription_end ? `Renews ${new Date(sub.subscription_end).toLocaleDateString()}` : ''}
             </div>
           </div>
           <div className="ml-auto grid grid-cols-3 gap-6 text-xs">
@@ -94,33 +94,35 @@ export default function Billing() {
 
       {/* Plans */}
       <div className="grid gap-4 lg:grid-cols-3">
-        {plans.filter(p => p.id !== 'trial').map((p, idx) => {
+        {plans.map((p) => {
           const isHighlight = p.id === 'pro';
-          const isCurrent = sub?.plan === p.id;
+          const isCurrent = sub?.plan === p.id || (p.id === 'free' && sub?.plan === 'trial');
+          const isFree = p.id === 'free';
           return (
             <div key={p.id} className={`relative rounded-md border p-6 ${isHighlight ? 'border-green-700 bg-zinc-950 text-zinc-100' : 'border-zinc-200 bg-white'}`}>
-              {isHighlight && <span className="absolute -top-3 left-6 rounded-full bg-green-700 px-3 py-1 text-xs font-medium uppercase tracking-wider text-white">Popular</span>}
+              {isHighlight && <span className="absolute -top-3 left-6 rounded-full bg-green-700 px-3 py-1 text-xs font-medium uppercase tracking-wider text-white">Most popular</span>}
               <div className={`text-xs font-semibold uppercase tracking-[0.2em] ${isHighlight ? 'text-green-400' : 'text-wa-dark'}`}>{p.name}</div>
               <div className="mt-2 flex items-baseline gap-1">
                 <span className="font-display text-3xl font-semibold tracking-tight">₹{p.price_inr}</span>
-                <span className={isHighlight ? 'text-zinc-400' : 'text-zinc-500'}>/month</span>
+                <span className={isHighlight ? 'text-zinc-400' : 'text-zinc-500'}>{isFree ? '' : '/month'}</span>
               </div>
               <ul className="mt-6 space-y-2 text-sm">
-                <li className="flex items-start gap-2"><Check className={`mt-0.5 h-4 w-4 ${isHighlight ? 'text-green-400' : 'text-wa-dark'}`} />{p.messages.toLocaleString()} messages / mo</li>
+                <li className="flex items-start gap-2"><Check className={`mt-0.5 h-4 w-4 ${isHighlight ? 'text-green-400' : 'text-wa-dark'}`} />{p.messages.toLocaleString()} messages {isFree ? '' : '/ mo'}</li>
                 <li className="flex items-start gap-2"><Check className={`mt-0.5 h-4 w-4 ${isHighlight ? 'text-green-400' : 'text-wa-dark'}`} />{p.leads.toLocaleString()} leads</li>
                 <li className="flex items-start gap-2"><Check className={`mt-0.5 h-4 w-4 ${isHighlight ? 'text-green-400' : 'text-wa-dark'}`} />{p.credentials} WhatsApp number{p.credentials > 1 ? 's' : ''}</li>
               </ul>
               <button
                 data-testid={`upgrade-${p.id}`}
-                disabled={isCurrent || busy === p.id}
-                onClick={() => upgrade(p.id)}
+                disabled={isCurrent || busy === p.id || isFree}
+                onClick={() => !isFree && upgrade(p.id)}
                 className={`mt-6 inline-flex w-full items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition ${
                   isCurrent ? 'cursor-default border border-zinc-300 text-zinc-500'
+                    : isFree ? 'cursor-default border border-zinc-200 text-zinc-400'
                     : isHighlight ? 'bg-wa-dark text-white hover:bg-wa-mid'
                     : 'border border-zinc-900 text-zinc-900 hover:bg-zinc-900 hover:text-white'
                 }`}
               >
-                {isCurrent ? 'Current plan' : busy === p.id ? 'Loading…' : <><CreditCard className="h-4 w-4" /> Upgrade to {p.name}</>}
+                {isCurrent ? 'Current plan' : isFree ? 'Free forever' : busy === p.id ? 'Loading…' : <><CreditCard className="h-4 w-4" /> Upgrade to {p.name}</>}
               </button>
             </div>
           );

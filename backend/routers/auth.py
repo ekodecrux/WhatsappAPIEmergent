@@ -7,7 +7,7 @@ from server import db
 from models import RegisterIn, LoginIn, TokenOut, uid, now
 from helpers import (
     hash_password, verify_password, create_token, get_current_user,
-    audit_log, trial_days_left, send_email
+    audit_log, trial_days_left, resolve_plan, send_email
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -23,9 +23,9 @@ async def register(payload: RegisterIn):
     tenant_doc = {
         "id": tenant_id,
         "company_name": payload.company_name,
-        "plan": "trial",
+        "plan": "free",
         "trial_start_date": now().isoformat(),
-        "trial_end_date": (now() + timedelta(days=14)).isoformat(),
+        "trial_end_date": (now() + timedelta(days=365)).isoformat(),
         "is_active": True,
         "created_at": now().isoformat(),
     }
@@ -49,8 +49,8 @@ async def register(payload: RegisterIn):
     try:
         send_email(
             payload.email,
-            f"Welcome to WhatsApp SaaS, {payload.full_name}!",
-            f"<h2>Welcome aboard</h2><p>Your 14-day free trial for <b>{payload.company_name}</b> is now active.</p>",
+            f"Welcome to wabridge, {payload.full_name}!",
+            f"<h2>Welcome aboard</h2><p>Your <b>Free</b> plan for <b>{payload.company_name}</b> is now active. Upgrade to Starter (₹499) or Pro (₹999) anytime.</p>",
         )
     except Exception:
         pass
@@ -64,8 +64,8 @@ async def register(payload: RegisterIn):
         full_name=payload.full_name,
         role="admin",
         company_name=payload.company_name,
-        plan="trial",
-        trial_days_left=14,
+        plan="free",
+        trial_days_left=365,
     )
 
 
@@ -90,7 +90,7 @@ async def login(payload: LoginIn):
         full_name=user.get("full_name", ""),
         role=user.get("role", "member"),
         company_name=tenant["company_name"],
-        plan=tenant.get("plan", "trial"),
+        plan=resolve_plan(tenant.get("plan", "free")),
         trial_days_left=trial_days_left(tenant),
         is_superadmin=bool(user.get("is_superadmin")),
     )

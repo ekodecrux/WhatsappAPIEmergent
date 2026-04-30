@@ -173,12 +173,12 @@ export default function Dashboard() {
       </div>
 
       {/* Trial banner */}
-      {overview?.tenant?.plan === 'trial' && (
+      {(overview?.tenant?.plan === 'free' || overview?.tenant?.plan === 'trial') && (
         <div className="rounded-md border border-amber-200 bg-amber-50 p-5">
           <div className="flex items-start gap-3">
             <AlertCircle className="mt-0.5 h-5 w-5 text-amber-700" />
             <div>
-              <div className="font-medium text-amber-900">You're on a free trial — {overview?.tenant?.trial_days_left} days remaining</div>
+              <div className="font-medium text-amber-900">You&apos;re on the Free plan — upgrade for more messages</div>
               <p className="mt-1 text-sm text-amber-800">Upgrade any time to keep your campaigns and chat history active.</p>
               <Link to="/app/billing" data-testid="trial-upgrade" className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-800">
                 See plans <ArrowUpRight className="h-3 w-3" />

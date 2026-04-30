@@ -20,10 +20,12 @@ const TABS = [
 ];
 
 const PLAN_BADGE = {
+  free: 'bg-zinc-100 text-zinc-800',
   trial: 'bg-amber-100 text-amber-800',
+  starter: 'bg-blue-100 text-blue-800',
   basic: 'bg-blue-100 text-blue-800',
-  pro: 'bg-purple-100 text-purple-800',
-  enterprise: 'bg-emerald-100 text-emerald-800',
+  pro: 'bg-green-100 text-green-800',
+  enterprise: 'bg-purple-100 text-purple-800',
 };
 
 const PRIO_BADGE = {
@@ -231,10 +233,9 @@ function Tenants() {
         </form>
         <select value={planFilter} onChange={(e) => setPlanFilter(e.target.value)} className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm">
           <option value="all">All plans</option>
-          <option value="trial">Trial</option>
-          <option value="basic">Basic</option>
-          <option value="pro">Pro</option>
-          <option value="enterprise">Enterprise</option>
+          <option value="free">Free</option>
+          <option value="starter">Starter (₹499)</option>
+          <option value="pro">Pro (₹999)</option>
         </select>
         <select value={activeFilter} onChange={(e) => setActiveFilter(e.target.value)} className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm">
           <option value="all">All statuses</option>
@@ -270,7 +271,7 @@ function Tenants() {
                 <td className="px-3 py-2.5">
                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${PLAN_BADGE[t.plan] || 'bg-zinc-100'}`}>{t.plan}</span>
                 </td>
-                <td className="px-3 py-2.5 text-zinc-700">{t.plan === 'trial' ? `${t.trial_days_left}d left` : '—'}</td>
+                <td className="px-3 py-2.5 text-zinc-700">{(t.plan === 'free' || t.plan === 'trial') ? `${t.trial_days_left}d` : '—'}</td>
                 <td className="px-3 py-2.5 text-right font-mono text-zinc-700">{fmtINR(t.wallet_balance_inr || 0)}</td>
                 <td className="px-3 py-2.5 text-right font-mono">{t.users_count || 0}</td>
                 <td className="px-3 py-2.5 text-right font-mono">{(t.messages_sent || 0).toLocaleString()}</td>
@@ -318,10 +319,9 @@ function Tenants() {
                 <div>
                   <label className="text-xs text-zinc-600">Assign plan</label>
                   <select value={editing.plan} onChange={(e) => setEditing({ ...editing, plan: e.target.value })} className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" data-testid="admin-edit-plan">
-                    <option value="trial">Trial · ₹0 / 14 days</option>
-                    <option value="basic">Basic · ₹999 / mo</option>
-                    <option value="pro">Pro · ₹2,999 / mo</option>
-                    <option value="enterprise">Enterprise · ₹9,999 / mo</option>
+                    <option value="free">Free · ₹0 / mo (100 msgs)</option>
+                    <option value="starter">Starter · ₹499 / mo (5,000 msgs)</option>
+                    <option value="pro">Pro · ₹999 / mo (25,000 msgs)</option>
                   </select>
                 </div>
                 <div>
@@ -851,7 +851,7 @@ function AnalyticsTab() {
           <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">Conversion funnel</div>
           <div className="mt-3 space-y-2 text-sm">
             <FunnelRow label="Total tenants" value={funnel.total} max={funnel.total} />
-            <FunnelRow label="Trial" value={funnel.trial} max={funnel.total} />
+            <FunnelRow label="Free" value={funnel.trial} max={funnel.total} />
             <FunnelRow label="Paid" value={funnel.paid} max={funnel.total} accent="text-green-700" />
             <FunnelRow label="On wallet plan" value={funnel.wallet_plan_tenants} max={funnel.total} accent="text-purple-700" />
             <FunnelRow label="Active in 7 days" value={funnel.active_7d} max={funnel.total} />

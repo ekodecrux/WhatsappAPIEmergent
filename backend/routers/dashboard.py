@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends
 
 from server import db
-from helpers import get_current_user, trial_days_left, PLANS
+from helpers import get_current_user, trial_days_left, PLANS, resolve_plan
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -32,7 +32,7 @@ async def overview(current=Depends(get_current_user)):
     ]).to_list(1)
     unread_total = unread[0]["total"] if unread else 0
 
-    plan_id = tenant.get("plan", "trial")
+    plan_id = resolve_plan(tenant.get("plan", "free"))
     plan = PLANS.get(plan_id, {})
 
     delivery_rate = round((delivered / max(sent_messages, 1)) * 100, 1)

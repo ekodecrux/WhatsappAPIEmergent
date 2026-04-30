@@ -32,7 +32,7 @@ export default function Login() {
             <div className="mt-8 grid grid-cols-3 gap-4 text-xs">
               <div><div className="font-display text-2xl font-semibold text-white">2.4M</div><div className="text-zinc-500">msgs / mo</div></div>
               <div><div className="font-display text-2xl font-semibold text-white">98.7%</div><div className="text-zinc-500">delivery</div></div>
-              <div><div className="font-display text-2xl font-semibold text-white">14 d</div><div className="text-zinc-500">free trial</div></div>
+              <div><div className="font-display text-2xl font-semibold text-white">Free</div><div className="text-zinc-500">forever plan</div></div>
             </div>
           </div>
         </div>

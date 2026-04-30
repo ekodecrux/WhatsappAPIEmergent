@@ -30,9 +30,9 @@ async def _ensure_user_and_tenant(email: str, full_name: str | None, company: st
     tenant_doc = {
         "id": tenant_id,
         "company_name": company or (full_name + "'s workspace" if full_name else "My workspace"),
-        "plan": "trial",
+        "plan": "free",
         "trial_start_date": now().isoformat(),
-        "trial_end_date": (now() + timedelta(days=14)).isoformat(),
+        "trial_end_date": (now() + timedelta(days=365)).isoformat(),
         "is_active": True,
         "created_at": now().isoformat(),
     }
@@ -66,7 +66,7 @@ def _token_response(user: dict, tenant: dict) -> TokenOut:
         full_name=user.get("full_name", ""),
         role=user.get("role", "member"),
         company_name=tenant["company_name"],
-        plan=tenant.get("plan", "trial"),
+        plan=tenant.get("plan", "free"),
         trial_days_left=trial_days_left(tenant),
     )
 

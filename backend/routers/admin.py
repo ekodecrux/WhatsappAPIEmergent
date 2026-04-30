@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from server import db
 from models import TenantUpdateIn, uid, now
-from helpers import require_superadmin, audit_log, PLANS, trial_days_left
+from helpers import require_superadmin, audit_log, PLANS, PLAN_ALIASES, resolve_plan, trial_days_left
 
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -35,7 +35,7 @@ async def platform_stats(_=Depends(require_superadmin)):
     # MRR (monthly recurring revenue, INR)
     mrr = 0
     for plan_id, count in plan_distribution.items():
-        plan = PLANS.get(plan_id, {})
+        plan = PLANS.get(resolve_plan(plan_id), {})
         if plan.get("price_inr"):
             mrr += plan["price_inr"] * count
 
@@ -153,13 +153,13 @@ async def update_tenant(tid: str, payload: TenantUpdateIn, current=Depends(requi
 
     upd: dict = {}
     if payload.plan is not None:
-        if payload.plan not in PLANS:
+        if payload.plan not in PLANS and payload.plan not in PLAN_ALIASES:
             raise HTTPException(400, f"Invalid plan. Allowed: {list(PLANS.keys())}")
-        upd["plan"] = payload.plan
-        if payload.plan != "trial":
-            # Set subscription dates
+        resolved = resolve_plan(payload.plan)
+        upd["plan"] = resolved
+        if resolved != "free":
             upd["subscription_start_date"] = now().isoformat()
-            upd["subscription_end_date"] = (now() + timedelta(days=PLANS[payload.plan].get("duration_days", 30))).isoformat()
+            upd["subscription_end_date"] = (now() + timedelta(days=PLANS[resolved].get("duration_days", 30))).isoformat()
     if payload.is_active is not None:
         upd["is_active"] = payload.is_active
         if not payload.is_active:
@@ -168,8 +168,10 @@ async def update_tenant(tid: str, payload: TenantUpdateIn, current=Depends(requi
     if payload.extend_trial_days:
         if payload.extend_trial_days < 1 or payload.extend_trial_days > 90:
             raise HTTPException(400, "extend_trial_days must be between 1 and 90")
-        if t.get("plan") != "trial" and not (payload.plan == "trial"):
-            raise HTTPException(400, "extend_trial_days only applies to trial plans")
+        current_plan = resolve_plan(t.get("plan"))
+        target_plan = resolve_plan(payload.plan) if payload.plan else current_plan
+        if current_plan != "free" and target_plan != "free":
+            raise HTTPException(400, "extend_trial_days only applies to the free tier")
         # parse current trial_end_date
         cur_end = t.get("trial_end_date")
         try:

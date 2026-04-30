@@ -82,8 +82,8 @@ export default function AppShell() {
     return <Navigate to="/app/admin" replace />;
   }
 
-  const trial = user?.trial_days_left ?? 0;
-  const onTrial = !isSuper && (user?.plan || 'trial') === 'trial';
+  const planSlug = user?.plan || 'free';
+  const onFree = !isSuper && (planSlug === 'free' || planSlug === 'trial');
   const initials = (user?.full_name || 'U').split(' ').map(s => s[0]).slice(0, 2).join('').toUpperCase();
 
   const onLogout = () => { logout(); navigate('/login'); };
@@ -162,13 +162,13 @@ export default function AppShell() {
             })
           )}
         </nav>
-        {onTrial && (
+        {onFree && (
           <div className="mx-3 mt-6 rounded-md border border-zinc-200 bg-gradient-to-br from-wa-dark to-wa-mid p-3.5 text-white">
             <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-wa-light">
-              <Sparkles className="h-3 w-3" /> Trial
+              <Sparkles className="h-3 w-3" /> Free plan
             </div>
-            <div className="mt-1 font-display text-xl font-semibold leading-tight">{trial} days left</div>
-            <p className="mt-1 text-xs text-white/70">Unlock Pro for unlimited workflows.</p>
+            <div className="mt-1 font-display text-xl font-semibold leading-tight">100 messages / mo</div>
+            <p className="mt-1 text-xs text-white/70">Upgrade to Starter (₹499) or Pro (₹999).</p>
             <button
               data-testid="upgrade-from-sidebar"
               onClick={() => navigate('/app/billing')}
@@ -271,9 +271,9 @@ export default function AppShell() {
                   <span className="font-mono">₹{(wallet.wallet_balance_inr || 0).toFixed(2)}</span>
                 </button>
               )}
-              {!isSuper && onTrial && trial <= 5 && (
+              {!isSuper && onFree && (
                 <div className="hidden items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-700 sm:flex">
-                  <AlertTriangle className="h-3.5 w-3.5" /> {trial} days left in trial
+                  <AlertTriangle className="h-3.5 w-3.5" /> Free plan — upgrade for more
                 </div>
               )}
               {isSuper ? (
@@ -282,7 +282,7 @@ export default function AppShell() {
                 </span>
               ) : (
                 <span className="hidden rounded-md border border-zinc-200 bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-700 sm:inline-flex">
-                  {user?.plan || 'trial'}
+                  {planSlug}
                 </span>
               )}
             </div>

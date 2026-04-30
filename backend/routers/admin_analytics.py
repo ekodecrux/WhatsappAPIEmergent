@@ -121,8 +121,8 @@ async def funnel(_=Depends(require_superadmin)):
     """Conversion + churn metrics across the platform."""
     not_platform = {"is_platform": {"$ne": True}}
     total = await db.tenants.count_documents(not_platform)
-    trial = await db.tenants.count_documents({**not_platform, "plan": "trial"})
-    paid = await db.tenants.count_documents({**not_platform, "plan": {"$in": ["basic", "pro", "enterprise"]}})
+    trial = await db.tenants.count_documents({**not_platform, "plan": {"$in": ["free", "trial"]}})
+    paid = await db.tenants.count_documents({**not_platform, "plan": {"$in": ["starter", "pro", "basic", "enterprise"]}})
     suspended = await db.tenants.count_documents({**not_platform, "is_active": False})
 
     # Active in last 7 days = at least one outbound message in that window

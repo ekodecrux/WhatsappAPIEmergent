@@ -120,7 +120,7 @@ export default function UserGuide() {
             <li><b>Email OTP</b> — a 6-digit code is mailed to you (5-min expiry)</li>
             <li><b>SMS OTP</b> — Twilio Verify sends a code to your phone</li>
           </ul>
-          <p>Every signup automatically creates a multi-tenant workspace with a <b>14-day free Pro trial</b>, no card required.</p>
+          <p>Every signup automatically creates a multi-tenant workspace on the <b>Free plan</b> (100 msgs/mo) — no card required. Upgrade to Starter (₹499) or Pro (₹999) anytime.</p>
         </Step>
         <Step n="2" title="Sign in later" icon={Lock}>
           Use the same three options at <Link to="/login" className="text-wa-dark underline">/login</Link>. Once in, you'll land on the Overview dashboard.
@@ -301,10 +301,9 @@ export default function UserGuide() {
       <Section id="subscription" icon={CreditCard} title="10. Subscription">
         <Step n="1" title="Plans &amp; limits">
           <ul className="ml-5 list-disc space-y-1">
-            <li><b>Trial</b> · 100 msgs · 100 leads · 14 days · ₹0</li>
-            <li><b>Basic</b> · 5,000 msgs · 1,000 leads · ₹999/mo</li>
-            <li><b>Pro</b> · 50,000 msgs · 10,000 leads · ₹2,999/mo</li>
-            <li><b>Enterprise</b> · 500,000 msgs · 100,000 leads · ₹9,999/mo</li>
+            <li><b>Free</b> · 100 msgs · 100 leads · ₹0 / forever</li>
+            <li><b>Starter</b> · 5,000 msgs · 1,000 leads · ₹499/mo</li>
+            <li><b>Pro</b> · 25,000 msgs · 10,000 leads · ₹999/mo</li>
           </ul>
         </Step>
         <Step n="2" title="Upgrade via Razorpay" icon={CreditCard}>

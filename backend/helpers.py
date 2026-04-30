@@ -120,18 +120,34 @@ async def audit_log(tenant_id: str, user_id: str, action: str, resource: str = "
 
 
 # ================ Plans ================
+# Three-tier SaaS pricing:
+#   free    — perpetual free entry tier
+#   starter — ₹499 / mo
+#   pro     — ₹999 / mo
+# Legacy slugs (trial/basic/enterprise) are aliased below for back-compat with existing tenants.
 PLANS = {
-    "trial": {"name": "Trial", "price_inr": 0, "messages": 100, "leads": 100, "credentials": 1, "duration_days": 14},
-    "basic": {"name": "Basic", "price_inr": 999, "messages": 5000, "leads": 1000, "credentials": 1, "duration_days": 30},
-    "pro": {"name": "Pro", "price_inr": 2999, "messages": 50000, "leads": 10000, "credentials": 3, "duration_days": 30},
-    "enterprise": {"name": "Enterprise", "price_inr": 9999, "messages": 500000, "leads": 100000, "credentials": 10, "duration_days": 30},
+    "free": {"name": "Free", "price_inr": 0, "messages": 100, "leads": 100, "credentials": 1, "duration_days": 365},
+    "starter": {"name": "Starter", "price_inr": 499, "messages": 5000, "leads": 1000, "credentials": 1, "duration_days": 30},
+    "pro": {"name": "Pro", "price_inr": 999, "messages": 25000, "leads": 10000, "credentials": 3, "duration_days": 30},
 }
+
+# Legacy slug → new slug (so older tenants & docs keep working)
+PLAN_ALIASES = {"trial": "free", "basic": "starter", "enterprise": "pro"}
+
+
+def resolve_plan(slug: str | None) -> str:
+    """Resolve legacy plan slugs (trial/basic/enterprise) to current tier names."""
+    if not slug:
+        return "free"
+    return PLAN_ALIASES.get(slug, slug)
 
 
 def trial_days_left(tenant: dict) -> int:
-    if tenant.get("plan") != "trial":
+    """Days left on the free tier (capped at duration_days)."""
+    plan = resolve_plan(tenant.get("plan"))
+    if plan != "free":
         return 0
-    end = tenant.get("trial_end_date")
+    end = tenant.get("trial_end_date") or tenant.get("free_end_date")
     if isinstance(end, str):
         end = datetime.fromisoformat(end)
     if not end:
