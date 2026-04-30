@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import api from '../lib/api';
 import {
   Shield, Users, Building2, CreditCard, LifeBuoy, BarChart3, Search, RefreshCcw,
   TrendingUp, AlertTriangle, MessageSquare, Workflow, X, Save, Inbox, Banknote,
-  Wallet, Percent, Plus, Minus,
+  Wallet, Percent, Plus, Minus, Eye,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -119,6 +120,8 @@ function Overview() {
 }
 
 function Tenants() {
+  const { startImpersonation } = useAuth();
+  const navigate = useNavigate();
   const [list, setList] = useState([]);
   const [search, setSearch] = useState('');
   const [planFilter, setPlanFilter] = useState('all');
@@ -128,6 +131,15 @@ function Tenants() {
   const [creditAmt, setCreditAmt] = useState('');
   const [creditNote, setCreditNote] = useState('');
   const [pricing, setPricing] = useState({ marketing: '', utility: '', authentication: '', service: '' });
+
+  const impersonate = async (tid) => {
+    if (!window.confirm('View as this tenant? You can return any time.')) return;
+    try {
+      const { data } = await api.post(`/admin/tenants/${tid}/impersonate`);
+      startImpersonation(data);
+      navigate('/app');
+    } catch (e) { toast.error(e?.response?.data?.detail || 'Impersonation failed'); }
+  };
 
   const load = async () => {
     const params = {};
@@ -271,7 +283,13 @@ function Tenants() {
                     {t.is_active ? 'Active' : 'Suspended'}
                   </span>
                 </td>
-                <td className="px-3 py-2.5 text-right">
+                <td className="px-3 py-2.5 text-right space-x-1">
+                  <button
+                    data-testid={`impersonate-${t.id}`}
+                    onClick={() => impersonate(t.id)}
+                    title="View as this tenant"
+                    className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] text-amber-800 hover:bg-amber-100"
+                  ><Eye className="h-3 w-3" /> View as</button>
                   <button
                     data-testid={`admin-edit-tenant-${t.id}`}
                     onClick={() => openEdit(t)}

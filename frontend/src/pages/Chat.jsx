@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import api, { API_BASE } from '../lib/api';
-import { Send, Sparkles, Search, MessageCircle, RefreshCw } from 'lucide-react';
+import { Send, Sparkles, Search, MessageCircle, RefreshCw, Zap, Plus, X, Megaphone } from 'lucide-react';
 import { toast } from 'sonner';
 
 const fmtTime = (s) => new Date(s).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -14,7 +14,13 @@ export default function Chat() {
   const [credentialId, setCredentialId] = useState('');
   const [suggestion, setSuggestion] = useState('');
   const [search, setSearch] = useState('');
+  const [quickReplies, setQuickReplies] = useState([]);
+  const [showSlash, setShowSlash] = useState(false);
+  const [slashFilter, setSlashFilter] = useState('');
+  const [showQRModal, setShowQRModal] = useState(false);
+  const [qrForm, setQrForm] = useState({ shortcut: '', body: '' });
   const endRef = useRef(null);
+  const inputRef = useRef(null);
 
   const loadConvs = async () => {
     const { data } = await api.get('/conversations');
@@ -25,6 +31,41 @@ export default function Chat() {
     setCreds(data);
     if (data[0]) setCredentialId(data[0].id);
   };
+  const loadQuickReplies = async () => {
+    try {
+      const { data } = await api.get('/quick-replies');
+      setQuickReplies(data);
+    } catch { /* ignore */ }
+  };
+  const saveQR = async (e) => {
+    e.preventDefault();
+    try {
+      await api.post('/quick-replies', { shortcut: qrForm.shortcut, body: qrForm.body });
+      toast.success('Quick reply saved');
+      setShowQRModal(false);
+      setQrForm({ shortcut: '', body: '' });
+      loadQuickReplies();
+    } catch (err) { toast.error(err?.response?.data?.detail || 'Save failed'); }
+  };
+  const insertQR = (qr) => {
+    setInput(qr.body);
+    setShowSlash(false);
+    api.post(`/quick-replies/${qr.id}/use`).catch(() => {});
+    setTimeout(() => inputRef.current?.focus(), 50);
+  };
+  const onInputChange = (e) => {
+    const v = e.target.value;
+    setInput(v);
+    if (v.startsWith('/') && v.indexOf(' ') === -1) {
+      setSlashFilter(v.slice(1).toLowerCase());
+      setShowSlash(true);
+    } else {
+      setShowSlash(false);
+    }
+  };
+  const filteredQR = quickReplies.filter(q =>
+    !slashFilter || q.shortcut.includes(slashFilter) || q.body.toLowerCase().includes(slashFilter)
+  );
   const loadMessages = async (id) => {
     const { data } = await api.get(`/conversations/${id}/messages`);
     setMessages(data);
@@ -36,7 +77,7 @@ export default function Chat() {
     } catch { setSuggestion(''); }
   };
 
-  useEffect(() => { loadConvs(); loadCreds(); }, []);
+  useEffect(() => { loadConvs(); loadCreds(); loadQuickReplies(); }, []);
 
   // WebSocket for real-time message broadcast
   useEffect(() => {
@@ -165,12 +206,31 @@ export default function Chat() {
                 </div>
                 <div>
                   <div className="text-sm font-medium text-zinc-900">{active.customer_name || active.customer_phone}</div>
-                  <div className="text-[11px] text-zinc-500">{active.customer_phone} · <span className={sentimentColor(active.sentiment)}>{active.sentiment || 'neutral'}</span></div>
+                  <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+                    <span>{active.customer_phone}</span>
+                    <span>·</span>
+                    <span className={sentimentColor(active.sentiment)}>{active.sentiment || 'neutral'}</span>
+                    {active.referral && (
+                      <span data-testid="ctwa-badge" title={active.referral.source_url || active.referral.headline || 'Click-to-WhatsApp ad'} className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-purple-800">
+                        <Megaphone className="h-2.5 w-2.5" /> from ad
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
-              <select value={credentialId} onChange={(e) => setCredentialId(e.target.value)} className="rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs">
-                {creds.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+              <div className="flex items-center gap-1.5">
+                <button
+                  data-testid="manage-quick-replies"
+                  onClick={() => setShowQRModal(true)}
+                  className="inline-flex items-center gap-1 rounded-md border border-zinc-300 bg-white px-2 py-1 text-[11px] hover:bg-zinc-50"
+                  title="Manage quick replies"
+                >
+                  <Zap className="h-3 w-3 text-wa-dark" /> {quickReplies.length}
+                </button>
+                <select value={credentialId} onChange={(e) => setCredentialId(e.target.value)} className="rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs">
+                  {creds.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
             </div>
             <div className="bg-wa-pattern flex-1 overflow-y-auto px-4 py-5">
               <div className="space-y-3">
@@ -192,17 +252,43 @@ export default function Chat() {
             <div className="border-t border-zinc-200 p-3">
               <div className="flex items-center gap-2">
                 <input
+                  ref={inputRef}
                   data-testid="chat-input"
                   value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && send()}
-                  placeholder="Reply…"
+                  onChange={onInputChange}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !showSlash) send();
+                    if (e.key === 'Escape') setShowSlash(false);
+                  }}
+                  placeholder="Reply… (type / for snippets)"
                   className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-wa-light"
                 />
                 <button data-testid="chat-send" onClick={send} className="inline-flex items-center gap-1.5 rounded-md bg-green-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-wa-mid">
                   <Send className="h-3.5 w-3.5" /> Send
                 </button>
               </div>
+              {showSlash && filteredQR.length > 0 && (
+                <div data-testid="slash-popover" className="mb-2 max-h-56 overflow-y-auto rounded-md border border-zinc-200 bg-white shadow-md">
+                  <div className="border-b border-zinc-100 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                    <Zap className="mr-1 inline h-3 w-3 text-wa-dark" /> Quick replies — Esc to close
+                  </div>
+                  {filteredQR.map(qr => (
+                    <button
+                      key={qr.id}
+                      type="button"
+                      data-testid={`qr-${qr.shortcut}`}
+                      onClick={() => insertQR(qr)}
+                      className="block w-full border-b border-zinc-100 px-3 py-2 text-left text-xs hover:bg-zinc-50"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono font-semibold text-wa-dark">/{qr.shortcut}</span>
+                        <span className="text-[10px] text-zinc-400">used {qr.use_count || 0}×</span>
+                      </div>
+                      <div className="mt-0.5 line-clamp-1 text-zinc-700">{qr.body}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </>
         ) : (
@@ -241,6 +327,14 @@ export default function Chat() {
                   <div><div className="text-zinc-400">Phone</div><div className="font-mono">{active.customer_phone}</div></div>
                   <div><div className="text-zinc-400">Status</div><div className="capitalize">{active.status}</div></div>
                 </div>
+                {active.referral && (
+                  <div className="mt-3 rounded-md border border-purple-200 bg-purple-50 p-2 text-[11px]">
+                    <div className="font-semibold uppercase tracking-wider text-purple-800 inline-flex items-center gap-1"><Megaphone className="h-3 w-3" /> CTWA attribution</div>
+                    {active.referral.source_url && <div className="mt-0.5 truncate text-purple-900">{active.referral.source_url}</div>}
+                    {active.referral.headline && <div className="text-purple-700">"{active.referral.headline}"</div>}
+                    {active.referral.source_id && <div className="font-mono text-[10px] text-purple-600">ad {active.referral.source_id}</div>}
+                  </div>
+                )}
               </div>
 
               <div className="mt-4 grid gap-1.5 text-xs">
@@ -260,6 +354,52 @@ export default function Chat() {
           )}
         </div>
       </aside>
+
+      {showQRModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowQRModal(false)}>
+          <div className="w-full max-w-lg rounded-md border border-zinc-200 bg-white p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-display text-lg font-semibold inline-flex items-center gap-2"><Zap className="h-4 w-4 text-wa-dark" /> Quick replies</h3>
+              <button onClick={() => setShowQRModal(false)}><X className="h-4 w-4" /></button>
+            </div>
+            <p className="mb-3 text-xs text-zinc-500">Type <code className="rounded bg-zinc-100 px-1">/shortcut</code> in the reply box to insert a saved snippet.</p>
+            <form onSubmit={saveQR} className="mb-3 grid grid-cols-[100px_1fr_auto] gap-1.5">
+              <input
+                data-testid="qr-shortcut"
+                required
+                placeholder="shortcut"
+                value={qrForm.shortcut}
+                onChange={(e) => setQrForm({ ...qrForm, shortcut: e.target.value })}
+                className="rounded-md border border-zinc-300 px-2 py-2 font-mono text-xs"
+              />
+              <input
+                data-testid="qr-body"
+                required
+                placeholder="Reply text…"
+                value={qrForm.body}
+                onChange={(e) => setQrForm({ ...qrForm, body: e.target.value })}
+                className="rounded-md border border-zinc-300 px-3 py-2 text-sm"
+              />
+              <button data-testid="qr-save" className="inline-flex items-center gap-1 rounded-md bg-wa-dark px-3 py-2 text-xs font-medium text-white"><Plus className="h-3 w-3" /> Add</button>
+            </form>
+            <div className="max-h-72 space-y-1 overflow-y-auto">
+              {quickReplies.length === 0 && <div className="py-6 text-center text-xs text-zinc-400">No snippets yet. Add one above.</div>}
+              {quickReplies.map(qr => (
+                <div key={qr.id} className="flex items-center gap-2 rounded-md border border-zinc-200 px-3 py-2 text-xs">
+                  <span className="font-mono font-semibold text-wa-dark">/{qr.shortcut}</span>
+                  <span className="flex-1 truncate text-zinc-700">{qr.body}</span>
+                  <span className="text-[10px] text-zinc-400">{qr.use_count || 0}×</span>
+                  <button
+                    data-testid={`qr-delete-${qr.shortcut}`}
+                    onClick={async () => { await api.delete(`/quick-replies/${qr.id}`); loadQuickReplies(); }}
+                    className="text-zinc-400 hover:text-red-700"
+                  ><X className="h-3 w-3" /></button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

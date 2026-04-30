@@ -51,6 +51,9 @@ async def lifespan(app: FastAPI):
     await db.webhook_deliveries.create_index([("tenant_id", 1), ("attempted_at", -1)])
     await db.api_key_usage.create_index([("key_hash", 1), ("bucket", 1)], unique=True)
     await db.api_key_usage.create_index([("bucket", 1)], expireAfterSeconds=300)
+    await db.quick_replies.create_index([("tenant_id", 1), ("shortcut", 1)], unique=True)
+    await db.scheduled_messages.create_index([("status", 1), ("send_at", 1)])
+    await db.scheduled_messages.create_index([("tenant_id", 1), ("created_at", -1)])
 
     # Seed superadmin user (idempotent)
     try:
@@ -91,7 +94,12 @@ async def lifespan(app: FastAPI):
         logger.warning("Superadmin seed skipped: %s", e)
 
     logger.info("WhatsApp SaaS started. DB: %s", os.environ["DB_NAME"])
+    # Start background scheduler for cart recovery / delayed sends
+    import asyncio as _asyncio
+    from scheduler import scheduler_loop
+    _scheduler_task = _asyncio.create_task(scheduler_loop(db))
     yield
+    _scheduler_task.cancel()
     client.close()
 
 
@@ -128,6 +136,7 @@ from routers import support as r_support  # noqa: E402
 from routers import assistant as r_assistant  # noqa: E402
 from routers import wallet as r_wallet  # noqa: E402
 from routers import admin_analytics as r_admin_analytics  # noqa: E402
+from routers import quick_replies as r_quick_replies  # noqa: E402
 
 api_router.include_router(r_auth.router)
 api_router.include_router(r_otp.router)
@@ -145,6 +154,7 @@ api_router.include_router(r_support.router)
 api_router.include_router(r_assistant.router)
 api_router.include_router(r_wallet.router)
 api_router.include_router(r_admin_analytics.router)
+api_router.include_router(r_quick_replies.router)
 
 app.include_router(api_router)
 

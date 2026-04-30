@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import api from '../lib/api';
 import {
-  Plus, ShieldCheck, Phone, Trash2, Lock, X, Beaker, Server, AlertCircle, Send, Zap, Info, ExternalLink, MessageSquare
+  Plus, ShieldCheck, Phone, Trash2, Lock, X, Beaker, Server, AlertCircle, Send, Zap, Info, ExternalLink, MessageSquare,
+  Award, Check, Copy, ChevronDown, ChevronRight as ChevronRightIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -125,6 +126,8 @@ export default function WhatsAppSetup() {
           <span className="font-medium text-zinc-900">Tokens are AES-256 encrypted</span> with a tenant-derived key. Decryption only happens in-memory at send time.
         </div>
       </div>
+
+      <GreenTickWizard />
 
       {/* Twilio Sandbox opt-in helper — required for real WhatsApp delivery */}
       {sandboxInfo && items.some(c => c.provider === 'twilio_sandbox') && (
@@ -373,3 +376,115 @@ export default function WhatsAppSetup() {
     </div>
   );
 }
+
+function GreenTickWizard() {
+  const [open, setOpen] = useState(false);
+  const [done, setDone] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('green_tick_progress') || '{}'); } catch { return {}; }
+  });
+  const toggleStep = (idx) => {
+    const next = { ...done, [idx]: !done[idx] };
+    setDone(next);
+    localStorage.setItem('green_tick_progress', JSON.stringify(next));
+  };
+  const STEPS = [
+    {
+      title: 'Verify your business in Meta Business Manager',
+      detail: 'Upload utility bill or business registration. Approval takes 1–7 days.',
+      link: 'https://business.facebook.com/settings/security',
+      linkLabel: 'Open Business Manager',
+    },
+    {
+      title: 'Confirm display name (no generic terms)',
+      detail: 'Use your real brand name (e.g. "Acme Corp"), not "Customer Care" or "Support". Avoid emojis and country names.',
+    },
+    {
+      title: 'Set up business profile in WhatsApp Manager',
+      detail: 'Add address, website, vertical, and a 640×640 logo. Required for the official badge review.',
+      link: 'https://business.facebook.com/wa/manage',
+      linkLabel: 'Open WhatsApp Manager',
+    },
+    {
+      title: 'Drive 100+ inbound conversations in 7 days',
+      detail: 'Meta only awards green ticks to phone numbers receiving real customer messages. Run a Click-to-WhatsApp ad to accelerate.',
+    },
+    {
+      title: 'Apply for Official Business Account',
+      detail: 'In WhatsApp Manager → Account info → "Apply for verification". Provide 3 high-quality news article links covering your brand.',
+      link: 'https://business.facebook.com/wa/manage/phone-numbers',
+      linkLabel: 'Apply for green tick',
+    },
+    {
+      title: 'Wait for review (4–28 days)',
+      detail: 'You\'ll get a notification on success. If rejected, fix the cited reason and re-apply after 30 days.',
+    },
+  ];
+  const completed = Object.values(done).filter(Boolean).length;
+  const pct = Math.round((completed / STEPS.length) * 100);
+  const samplePR = `Sample press release angle:\n\n"${'<Your Brand>'} launches WhatsApp customer service that responds in <2 minutes — powered by wabridge"\n\nKey points to include for journalists:\n• Founder quote on why WhatsApp-first support\n• Customer base size & geography\n• Photo of founders / office\n• Spokesperson contact email + phone\n\nPitch to: TechCrunch India, YourStory, Inc42, Economic Times Tech, Moneycontrol Business`;
+
+  return (
+    <div className="rounded-md border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white">
+      <button
+        data-testid="green-tick-toggle"
+        onClick={() => setOpen(o => !o)}
+        className="flex w-full items-center justify-between p-4 text-left"
+      >
+        <div className="flex items-center gap-3">
+          <div className="grid h-9 w-9 place-items-center rounded-full bg-emerald-600 text-white">
+            <Award className="h-4 w-4" />
+          </div>
+          <div>
+            <div className="text-sm font-semibold text-emerald-950">Green Tick Application Helper</div>
+            <div className="text-xs text-emerald-800">{completed} of {STEPS.length} steps complete · {pct}%</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="hidden h-1.5 w-32 overflow-hidden rounded-full bg-emerald-200 sm:block">
+            <div className="h-full bg-emerald-600 transition-all" style={{ width: `${pct}%` }} />
+          </div>
+          {open ? <ChevronDown className="h-4 w-4 text-emerald-700" /> : <ChevronRightIcon className="h-4 w-4 text-emerald-700" />}
+        </div>
+      </button>
+      {open && (
+        <div className="border-t border-emerald-200 p-4">
+          <p className="mb-3 text-xs text-emerald-900">
+            Meta&apos;s green tick (Official Business Account) takes <strong>4–8 weeks</strong> end-to-end.
+            Follow these steps in order. We&apos;ve checked the latest 2026 Meta guidelines — most rejections happen at step 4 (low conversation volume).
+          </p>
+          <ol className="space-y-2">
+            {STEPS.map((s, i) => (
+              <li key={i} className={`flex items-start gap-3 rounded-md border p-3 transition ${done[i] ? 'border-emerald-300 bg-emerald-50/60' : 'border-zinc-200 bg-white'}`}>
+                <button
+                  data-testid={`green-tick-step-${i}`}
+                  onClick={() => toggleStep(i)}
+                  className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full border ${done[i] ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-zinc-300 bg-white'}`}
+                >
+                  {done[i] ? <Check className="h-3 w-3" /> : <span className="text-[10px] font-bold text-zinc-500">{i + 1}</span>}
+                </button>
+                <div className="min-w-0 flex-1">
+                  <div className={`text-sm font-medium ${done[i] ? 'text-emerald-900 line-through' : 'text-zinc-900'}`}>{s.title}</div>
+                  <div className="mt-0.5 text-xs text-zinc-600">{s.detail}</div>
+                  {s.link && (
+                    <a href={s.link} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-emerald-700 hover:underline">
+                      {s.linkLabel} <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ol>
+          <details className="mt-4 rounded-md border border-zinc-200 bg-white">
+            <summary className="cursor-pointer p-3 text-xs font-medium text-zinc-700">📰 Press-release template (3 articles required by Meta)</summary>
+            <pre className="whitespace-pre-wrap border-t border-zinc-200 bg-zinc-50 p-3 text-[11px] leading-relaxed text-zinc-700">{samplePR}</pre>
+            <button
+              onClick={() => { navigator.clipboard.writeText(samplePR); toast.success('Press-release template copied'); }}
+              className="m-3 inline-flex items-center gap-1.5 rounded-md border border-zinc-300 bg-white px-2.5 py-1 text-xs hover:bg-zinc-50"
+            ><Copy className="h-3 w-3" /> Copy template</button>
+          </details>
+        </div>
+      )}
+    </div>
+  );
+}
+

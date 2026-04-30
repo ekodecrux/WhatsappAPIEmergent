@@ -420,6 +420,80 @@ async def erp_create_lead(payload: dict, ctx=Depends(get_tenant_from_api_key)):
     return doc
 
 
+# ============ Cart recovery / scheduled sends ============
+class AbandonCartIn(BaseModel):
+    to_phone: str = Field(min_length=8)
+    customer_name: str | None = None
+    cart_value_inr: float | None = None
+    cart_url: str | None = None
+    delay_minutes: int = Field(default=30, ge=1, le=10080)  # max 7 days
+    message: str | None = None  # if omitted, default reminder template
+    credential_id: str | None = None
+    category: str = "marketing"
+
+
+@router.post("/erp/abandon-cart")
+async def erp_abandon_cart(payload: AbandonCartIn, ctx=Depends(get_tenant_from_api_key)):
+    """Schedule an automated cart-recovery WhatsApp message after `delay_minutes`."""
+    await _rate_check(ctx["api_key"])
+    tenant = ctx["tenant"]
+    if not payload.to_phone.startswith("+"):
+        raise HTTPException(400, "to_phone must be E.164")
+    cred = await _resolve_credential(tenant["id"], payload.credential_id)
+
+    name = (payload.customer_name or "there").split()[0]
+    default_msg = (
+        f"Hi {name}! You left items in your cart"
+        + (f" worth ₹{payload.cart_value_inr:.0f}" if payload.cart_value_inr else "")
+        + ". Complete your order in 1 tap"
+        + (f": {payload.cart_url}" if payload.cart_url else "")
+        + " — let me know if you have any questions!"
+    )
+    body = payload.message or default_msg
+    send_at = (datetime.now(timezone.utc) + timedelta(minutes=payload.delay_minutes)).isoformat()
+
+    doc = {
+        "id": uid(),
+        "tenant_id": tenant["id"],
+        "credential_id": cred["id"],
+        "to_phone": payload.to_phone,
+        "body": body,
+        "category": payload.category,
+        "kind": "cart_recovery",
+        "source": "erp_cart_recovery",
+        "send_at": send_at,
+        "status": "pending",
+        "context": {
+            "customer_name": payload.customer_name,
+            "cart_value_inr": payload.cart_value_inr,
+            "cart_url": payload.cart_url,
+        },
+        "created_at": now().isoformat(),
+    }
+    await db.scheduled_messages.insert_one(doc)
+    doc.pop("_id", None)
+    return {"scheduled": True, "send_at": send_at, "id": doc["id"]}
+
+
+@router.get("/erp/scheduled")
+async def list_scheduled(ctx=Depends(get_tenant_from_api_key), status: str | None = None, limit: int = 100):
+    """List scheduled / sent / failed cart-recovery messages."""
+    q = {"tenant_id": ctx["tenant"]["id"]}
+    if status:
+        q["status"] = status
+    cur = db.scheduled_messages.find(q, {"_id": 0}).sort("send_at", -1).limit(min(500, max(1, limit)))
+    return await cur.to_list(500)
+
+
+@router.delete("/erp/scheduled/{sid}")
+async def cancel_scheduled(sid: str, ctx=Depends(get_tenant_from_api_key)):
+    res = await db.scheduled_messages.update_one(
+        {"id": sid, "tenant_id": ctx["tenant"]["id"], "status": "pending"},
+        {"$set": {"status": "cancelled", "completed_at": now().isoformat()}},
+    )
+    return {"cancelled": bool(res.modified_count)}
+
+
 # ============ Audit logs ============
 @router.get("/audit-logs")
 async def list_audit(current=Depends(get_current_user)):

@@ -10,24 +10,36 @@ import AIAssistant from './AIAssistant';
 import api from '../lib/api';
 
 const TENANT_NAV = [
-  { to: '/app', label: 'Overview', icon: LayoutDashboard, end: true },
-  { to: '/app/whatsapp', label: 'WhatsApp Setup', icon: MessageSquare },
-  { to: '/app/campaigns', label: 'Campaigns', icon: Send },
-  { to: '/app/leads', label: 'Leads / CRM', icon: Users },
-  { to: '/app/chat', label: 'Live Chat', icon: MessagesSquare },
-  { to: '/app/auto-replies', label: 'Auto-replies', icon: Bot },
-  { to: '/app/flows', label: 'Chatbot Flows', icon: Workflow },
-  { to: '/app/marketplace', label: 'Marketplace', icon: Store },
-  { to: '/app/templates', label: 'Templates', icon: FileText },
-  { to: '/app/analytics', label: 'Analytics', icon: BarChart3 },
-  { to: '/app/delivery', label: 'Delivery Status', icon: Activity },
-  { to: '/app/wallet', label: 'Wallet', icon: Wallet },
-  { to: '/app/billing', label: 'Subscription', icon: CreditCard },
-  { to: '/app/integrations', label: 'ERP & API', icon: Plug },
-  { to: '/app/team', label: 'Team', icon: UserPlus },
-  { to: '/app/support', label: 'Support', icon: LifeBuoy },
-  { to: '/app/guide', label: 'User Guide', icon: BookOpen },
-  { to: '/app/settings', label: 'Settings', icon: SettingsIcon },
+  // Engage
+  { to: '/app', label: 'Dashboard', icon: LayoutDashboard, end: true, group: 'engage' },
+  { to: '/app/campaigns', label: 'Campaigns', icon: Send, group: 'engage' },
+  { to: '/app/flows', label: 'Chatbots', icon: Workflow, group: 'engage' },
+  { to: '/app/templates', label: 'Templates', icon: FileText, group: 'engage' },
+  { to: '/app/marketplace', label: 'Marketplace', icon: Store, group: 'engage' },
+  // Customers
+  { to: '/app/chat', label: 'Inbox', icon: MessagesSquare, group: 'customers' },
+  { to: '/app/leads', label: 'Leads & CRM', icon: Users, group: 'customers' },
+  { to: '/app/auto-replies', label: 'Auto-replies', icon: Bot, group: 'customers' },
+  // Insights
+  { to: '/app/analytics', label: 'Analytics', icon: BarChart3, group: 'insights' },
+  { to: '/app/delivery', label: 'Delivery', icon: Activity, group: 'insights' },
+  // Build
+  { to: '/app/whatsapp', label: 'Channels', icon: MessageSquare, group: 'build' },
+  { to: '/app/integrations', label: 'Developer', icon: Plug, group: 'build' },
+  { to: '/app/team', label: 'Team', icon: UserPlus, group: 'build' },
+  // Account
+  { to: '/app/wallet', label: 'Wallet', icon: Wallet, group: 'account' },
+  { to: '/app/billing', label: 'Subscription', icon: CreditCard, group: 'account' },
+  { to: '/app/support', label: 'Support', icon: LifeBuoy, group: 'account' },
+  { to: '/app/settings', label: 'Settings', icon: SettingsIcon, group: 'account' },
+];
+
+const NAV_GROUPS = [
+  { id: 'engage', label: 'Engage' },
+  { id: 'customers', label: 'Customers' },
+  { id: 'insights', label: 'Insights' },
+  { id: 'build', label: 'Build' },
+  { id: 'account', label: 'Account' },
 ];
 
 const SUPERADMIN_NAV = [
@@ -42,12 +54,13 @@ const SUPERADMIN_NAV = [
 const TITLES = TENANT_NAV.reduce((m, n) => ({ ...m, [n.to]: n.label }), {});
 
 export default function AppShell() {
-  const { user, logout } = useAuth();
+  const { user, logout, stopImpersonation } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [wallet, setWallet] = useState(null);
   const isSuper = !!user?.is_superadmin;
+  const isImpersonating = !!user?.impersonating;
   const NAV = isSuper ? SUPERADMIN_NAV : TENANT_NAV;
 
   useEffect(() => {
@@ -93,32 +106,61 @@ export default function AppShell() {
           <div className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-purple-700">Platform Owner</div>
         )}
         <nav className="space-y-0.5 px-2">
-          {NAV.map((item) => {
-            const isQueryRoute = item.to.includes('?');
-            const targetPath = isQueryRoute ? item.to.split('?')[0] : item.to;
-            const targetTab = isQueryRoute ? new URLSearchParams(item.to.split('?')[1]).get('tab') : null;
-            const currentTab = new URLSearchParams(location.search).get('tab');
-            const isActive = isQueryRoute
-              ? location.pathname === targetPath && currentTab === targetTab
-              : (item.end ? location.pathname === item.to && !location.search : location.pathname.startsWith(item.to));
-            return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                data-testid={`nav-${item.label.replace(/\s|\/|&/g, '-').toLowerCase()}`}
-                onClick={() => setMobileOpen(false)}
-                className={`flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition ${
-                  isActive
-                    ? (isSuper ? 'bg-purple-50 font-medium text-purple-900' : 'bg-zinc-100 font-medium text-zinc-900')
-                    : (isSuper ? 'text-purple-800 hover:bg-purple-50' : 'text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900')
-                }`}
-              >
-                <item.icon className="h-4 w-4" />
-                <span>{item.label}</span>
-              </NavLink>
-            );
-          })}
+          {isSuper ? (
+            NAV.map((item) => {
+              const isQueryRoute = item.to.includes('?');
+              const targetPath = isQueryRoute ? item.to.split('?')[0] : item.to;
+              const targetTab = isQueryRoute ? new URLSearchParams(item.to.split('?')[1]).get('tab') : null;
+              const currentTab = new URLSearchParams(location.search).get('tab');
+              const isActive = isQueryRoute
+                ? location.pathname === targetPath && currentTab === targetTab
+                : (item.end ? location.pathname === item.to && !location.search : location.pathname.startsWith(item.to));
+              return (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.end}
+                  data-testid={`nav-${item.label.replace(/\s|\/|&/g, '-').toLowerCase()}`}
+                  onClick={() => setMobileOpen(false)}
+                  className={`flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition ${
+                    isActive
+                      ? 'bg-purple-50 font-medium text-purple-900'
+                      : 'text-purple-800 hover:bg-purple-50'
+                  }`}
+                >
+                  <item.icon className="h-4 w-4" />
+                  <span>{item.label}</span>
+                </NavLink>
+              );
+            })
+          ) : (
+            NAV_GROUPS.map((g) => {
+              const items = NAV.filter(n => n.group === g.id);
+              if (!items.length) return null;
+              return (
+                <div key={g.id} className="pb-1">
+                  <div className="px-2.5 pb-1 pt-3 text-[9px] font-semibold uppercase tracking-[0.22em] text-zinc-400 first:pt-0">{g.label}</div>
+                  {items.map(item => (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      end={item.end}
+                      data-testid={`nav-${item.label.replace(/\s|\/|&/g, '-').toLowerCase()}`}
+                      onClick={() => setMobileOpen(false)}
+                      className={({ isActive }) =>
+                        `flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition ${
+                          isActive ? 'bg-zinc-100 font-medium text-zinc-900' : 'text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900'
+                        }`
+                      }
+                    >
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.label}</span>
+                    </NavLink>
+                  ))}
+                </div>
+              );
+            })
+          )}
         </nav>
         {onTrial && (
           <div className="mx-3 mt-6 rounded-md border border-zinc-200 bg-gradient-to-br from-wa-dark to-wa-mid p-3.5 text-white">
@@ -170,71 +212,86 @@ export default function AppShell() {
   })();
 
   return (
-    <div className="flex h-screen bg-zinc-50">
-      {/* Desktop sidebar */}
-      <div className="hidden lg:block">{Sidebar}</div>
-
-      {/* Mobile sidebar drawer */}
-      {mobileOpen && (
-        <div className="fixed inset-0 z-40 lg:hidden">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setMobileOpen(false)} />
-          <div className="absolute inset-y-0 left-0">{Sidebar}</div>
+    <div className="flex h-screen flex-col bg-zinc-50">
+      {isImpersonating && (
+        <div data-testid="impersonation-banner" className="flex h-9 items-center justify-between bg-amber-500 px-4 text-xs font-medium text-amber-950">
+          <span className="inline-flex items-center gap-2">
+            <Shield className="h-3.5 w-3.5" />
+            Viewing as <strong className="font-bold">{user?.email}</strong> at <strong className="font-bold">{user?.company_name}</strong> · impersonated by {user?.impersonated_by}
+          </span>
+          <button
+            data-testid="stop-impersonation"
+            onClick={() => { stopImpersonation(); navigate('/app/admin?tab=tenants'); }}
+            className="rounded bg-amber-950 px-2.5 py-1 text-[11px] font-semibold text-amber-100 hover:bg-amber-800"
+          >Return to platform</button>
         </div>
       )}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Desktop sidebar */}
+        <div className="hidden lg:block">{Sidebar}</div>
 
-      {/* Main */}
-      <main className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-zinc-200 bg-white/70 px-4 backdrop-blur-xl sm:px-6">
-          <div className="flex items-center gap-3">
-            <button
-              data-testid="open-sidebar"
-              className="rounded-md p-1.5 text-zinc-700 hover:bg-zinc-100 lg:hidden"
-              onClick={() => setMobileOpen(true)}
-            >
-              <Menu className="h-4 w-4" />
-            </button>
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-zinc-500">{isSuper ? 'wabridge platform' : user?.company_name}</span>
-              <span className="text-zinc-300">/</span>
-              <span className="font-medium text-zinc-900">{currentTitle}</span>
-            </div>
+        {/* Mobile sidebar drawer */}
+        {mobileOpen && (
+          <div className="fixed inset-0 z-40 lg:hidden">
+            <div className="absolute inset-0 bg-black/40" onClick={() => setMobileOpen(false)} />
+            <div className="absolute inset-y-0 left-0">{Sidebar}</div>
           </div>
-          <div className="flex items-center gap-2">
-            {!isSuper && wallet?.billing_mode === 'wallet' && (
+        )}
+
+        {/* Main */}
+        <main className="flex min-w-0 flex-1 flex-col">
+          <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-zinc-200 bg-white/70 px-4 backdrop-blur-xl sm:px-6">
+            <div className="flex items-center gap-3">
               <button
-                data-testid="topbar-wallet-pill"
-                onClick={() => navigate('/app/wallet')}
-                title={`Wallet balance · ${wallet.estimated_marketing_messages_left} marketing msgs left`}
-                className={`hidden items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium sm:inline-flex ${
-                  wallet.wallet_balance_inr < (wallet.low_balance_threshold_inr || 50)
-                    ? 'border-red-300 bg-red-50 text-red-800'
-                    : 'border-zinc-200 bg-white text-zinc-800 hover:bg-zinc-50'
-                }`}
+                data-testid="open-sidebar"
+                className="rounded-md p-1.5 text-zinc-700 hover:bg-zinc-100 lg:hidden"
+                onClick={() => setMobileOpen(true)}
               >
-                <Wallet className="h-3.5 w-3.5" />
-                <span className="font-mono">₹{(wallet.wallet_balance_inr || 0).toFixed(2)}</span>
+                <Menu className="h-4 w-4" />
               </button>
-            )}
-            {!isSuper && onTrial && trial <= 5 && (
-              <div className="hidden items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-700 sm:flex">
-                <AlertTriangle className="h-3.5 w-3.5" /> {trial} days left in trial
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-zinc-500">{isSuper ? 'wabridge platform' : user?.company_name}</span>
+                <span className="text-zinc-300">/</span>
+                <span className="font-medium text-zinc-900">{currentTitle}</span>
               </div>
-            )}
-            {isSuper ? (
-              <span className="hidden rounded-md border border-purple-300 bg-purple-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-purple-800 sm:inline-flex">
-                Platform Owner
-              </span>
-            ) : (
-              <span className="hidden rounded-md border border-zinc-200 bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-700 sm:inline-flex">
-                {user?.plan || 'trial'}
-              </span>
-            )}
+            </div>
+            <div className="flex items-center gap-2">
+              {!isSuper && wallet?.billing_mode === 'wallet' && (
+                <button
+                  data-testid="topbar-wallet-pill"
+                  onClick={() => navigate('/app/wallet')}
+                  title={`Wallet balance · ${wallet.estimated_marketing_messages_left} marketing msgs left`}
+                  className={`hidden items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium sm:inline-flex ${
+                    wallet.wallet_balance_inr < (wallet.low_balance_threshold_inr || 50)
+                      ? 'border-red-300 bg-red-50 text-red-800'
+                      : 'border-zinc-200 bg-white text-zinc-800 hover:bg-zinc-50'
+                  }`}
+                >
+                  <Wallet className="h-3.5 w-3.5" />
+                  <span className="font-mono">₹{(wallet.wallet_balance_inr || 0).toFixed(2)}</span>
+                </button>
+              )}
+              {!isSuper && onTrial && trial <= 5 && (
+                <div className="hidden items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-700 sm:flex">
+                  <AlertTriangle className="h-3.5 w-3.5" /> {trial} days left in trial
+                </div>
+              )}
+              {isSuper ? (
+                <span className="hidden rounded-md border border-purple-300 bg-purple-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-purple-800 sm:inline-flex">
+                  Platform Owner
+                </span>
+              ) : (
+                <span className="hidden rounded-md border border-zinc-200 bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-700 sm:inline-flex">
+                  {user?.plan || 'trial'}
+                </span>
+              )}
+            </div>
+          </header>
+          <div className="flex-1 overflow-y-auto">
+            <Outlet />
           </div>
-        </header>
-        <div className="flex-1 overflow-y-auto">
-          <Outlet />
-        </div>
-      </main>
+        </main>
+      </div>
       {!isSuper && <AIAssistant />}
     </div>
   );

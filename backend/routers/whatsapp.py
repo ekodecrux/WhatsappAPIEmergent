@@ -434,6 +434,7 @@ async def meta_webhook_inbound(request: Request):
                     customer_phone = "+" + m.get("from", "")
                     text_body = (m.get("text") or {}).get("body", "")
                     sid = m.get("id", "")
+                    referral = m.get("referral")  # CTWA ad referral payload
 
                     conv = await db.conversations.find_one(
                         {"tenant_id": tenant_id, "customer_phone": customer_phone}, {"_id": 0},
@@ -451,13 +452,18 @@ async def meta_webhook_inbound(request: Request):
                             "last_message": text_body,
                             "last_message_at": now().isoformat(),
                             "created_at": now().isoformat(),
+                            "referral": referral,  # CTWA attribution
+                            "source": "ctwa" if referral else "organic",
                         }
                         await db.conversations.insert_one(conv)
                     else:
+                        upd = {"last_message": text_body, "last_message_at": now().isoformat()}
+                        if referral and not conv.get("referral"):
+                            upd["referral"] = referral
+                            upd["source"] = "ctwa"
                         await db.conversations.update_one(
                             {"id": conv["id"]},
-                            {"$inc": {"unread_count": 1},
-                             "$set": {"last_message": text_body, "last_message_at": now().isoformat()}},
+                            {"$inc": {"unread_count": 1}, "$set": upd},
                         )
 
                     sentiment = await run_sync(ai_analyze_sentiment, text_body)

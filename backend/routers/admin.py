@@ -199,6 +199,52 @@ async def update_tenant(tid: str, payload: TenantUpdateIn, current=Depends(requi
     return {**fresh, "trial_days_left": trial_days_left(fresh)}
 
 
+# ============ Impersonation ============
+@router.post("/tenants/{tid}/impersonate")
+async def impersonate_tenant(tid: str, current=Depends(require_superadmin)):
+    """Issue a short-lived tenant-scoped JWT so the platform owner can 'View as tenant X'.
+
+    The returned token impersonates the *first admin* of the tenant. The original superadmin
+    session in the browser must be preserved client-side and restored on exit.
+    """
+    from helpers import create_token
+    t = await db.tenants.find_one({"id": tid}, {"_id": 0})
+    if not t:
+        raise HTTPException(404, "Tenant not found")
+    if t.get("is_platform"):
+        raise HTTPException(400, "Cannot impersonate platform tenant")
+    target = await db.users.find_one(
+        {"tenant_id": tid, "role": "admin"}, {"_id": 0, "password_hash": 0},
+        sort=[("created_at", 1)],
+    )
+    if not target:
+        target = await db.users.find_one(
+            {"tenant_id": tid}, {"_id": 0, "password_hash": 0},
+            sort=[("created_at", 1)],
+        )
+    if not target:
+        raise HTTPException(400, "Tenant has no users to impersonate")
+
+    token = create_token(target["id"], tid)
+    await audit_log("platform", current["id"], "impersonate_tenant", tid,
+                    {"as_user": target.get("email")})
+    return {
+        "access_token": token,
+        "user_id": target["id"],
+        "tenant_id": tid,
+        "email": target.get("email"),
+        "full_name": target.get("full_name") or target.get("email"),
+        "role": target.get("role", "admin"),
+        "company_name": t.get("company_name"),
+        "plan": t.get("plan", "trial"),
+        "trial_days_left": trial_days_left(t),
+        "is_superadmin": False,
+        "impersonating": True,
+        "impersonated_by": current.get("email"),
+    }
+
+
+
 # ============ Users (cross-tenant) ============
 @router.get("/users")
 async def list_users(_=Depends(require_superadmin), search: str | None = None):

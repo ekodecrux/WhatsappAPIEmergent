@@ -19,11 +19,32 @@ export function AuthProvider({ children }) {
     } else {
       localStorage.removeItem('wa_user');
       localStorage.removeItem('wa_token');
+      localStorage.removeItem('wa_super_user');
     }
     setUser(u);
   };
 
   const setSession = (data) => persist(data);
+
+  // ===== Impersonation =====
+  const startImpersonation = (sessionData) => {
+    // Save current super-admin session under separate key so we can restore later
+    if (user) localStorage.setItem('wa_super_user', JSON.stringify(user));
+    persist({ ...sessionData, impersonating: true });
+  };
+  const stopImpersonation = () => {
+    try {
+      const raw = localStorage.getItem('wa_super_user');
+      if (raw) {
+        const restored = JSON.parse(raw);
+        localStorage.removeItem('wa_super_user');
+        persist(restored);
+        return true;
+      }
+    } catch {}
+    persist(null);
+    return false;
+  };
 
   const login = async (email, password) => {
     setLoading(true);
@@ -60,7 +81,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, refreshUser, setSession, loading }}>
+    <AuthContext.Provider value={{ user, login, register, logout, refreshUser, setSession, startImpersonation, stopImpersonation, loading }}>
       {children}
     </AuthContext.Provider>
   );
