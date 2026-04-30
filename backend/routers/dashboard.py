@@ -106,6 +106,150 @@ async def status_breakdown(current=Depends(get_current_user)):
     return [{"status": i["_id"] or "unknown", "count": i["count"]} for i in items]
 
 
+@router.get("/summary")
+async def unified_summary(current=Depends(get_current_user)):
+    """Unified mission-control summary for the Dashboard.
+
+    Returns a single payload with module-level snapshots so the user can see
+    everything at a glance and deep-link into each section.
+    """
+    tid = current["tenant_id"]
+    tenant = await db.tenants.find_one({"id": tid}, {"_id": 0}) or {}
+
+    # Inbox
+    unread_pipe = [
+        {"$match": {"tenant_id": tid}},
+        {"$group": {"_id": None, "total": {"$sum": "$unread_count"},
+                    "count": {"$sum": 1}}},
+    ]
+    inbox_agg = await db.conversations.aggregate(unread_pipe).to_list(1)
+    inbox = inbox_agg[0] if inbox_agg else {"total": 0, "count": 0}
+    last_inbound = await db.messages.find_one(
+        {"tenant_id": tid, "direction": "inbound"}, {"_id": 0},
+        sort=[("sent_at", -1)],
+    )
+
+    # Campaigns
+    running = await db.campaigns.count_documents({"tenant_id": tid, "status": "running"})
+    scheduled = await db.campaigns.count_documents({"tenant_id": tid, "status": "scheduled"})
+    last_campaign = await db.campaigns.find_one(
+        {"tenant_id": tid}, {"_id": 0}, sort=[("created_at", -1)],
+    )
+
+    # Leads
+    new_leads = await db.leads.count_documents({"tenant_id": tid, "status": "new"})
+    qualified = await db.leads.count_documents({"tenant_id": tid, "status": {"$in": ["qualified", "converted"]}})
+
+    # Channels
+    channels_count = await db.whatsapp_credentials.count_documents({"tenant_id": tid})
+    channels_active = await db.whatsapp_credentials.count_documents({"tenant_id": tid, "status": "active"})
+
+    # Wallet
+    wallet_balance = float(tenant.get("wallet_balance_inr") or 0)
+    threshold = float(tenant.get("low_balance_threshold_inr") or 50)
+
+    # Flows
+    flows_count = await db.flows.count_documents({"tenant_id": tid})
+    flows_published = await db.flows.count_documents({"tenant_id": tid, "is_published": True})
+
+    # ERP
+    api_keys_active = await db.api_keys.count_documents({"tenant_id": tid, "is_active": True})
+    webhooks_active = await db.erp_webhooks.count_documents({"tenant_id": tid, "is_active": True})
+
+    # Cart recovery
+    pending_scheduled = await db.scheduled_messages.count_documents({"tenant_id": tid, "status": "pending"})
+
+    # Today's outbound
+    today_iso = datetime.now(timezone.utc).date().isoformat()
+    today_sent = await db.messages.count_documents({
+        "tenant_id": tid, "direction": "outbound", "sent_at": {"$gte": today_iso},
+    })
+
+    # Recent failures
+    failures_24h = await db.messages.count_documents({
+        "tenant_id": tid, "direction": "outbound", "status": "failed",
+        "sent_at": {"$gte": (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()},
+    })
+
+    # Open tickets
+    open_tickets = await db.support_tickets.count_documents({
+        "tenant_id": tid, "status": {"$in": ["open", "in_progress", "pending"]},
+    })
+
+    # Build attention items (sorted, max 5)
+    attention = []
+    if channels_count == 0:
+        attention.append({"level": "high", "icon": "channel", "msg": "Connect your first WhatsApp number to start sending",
+                          "cta": "Connect", "href": "/app/whatsapp"})
+    if wallet_balance < threshold and (tenant.get("billing_mode") == "wallet"):
+        attention.append({"level": "high", "icon": "wallet", "msg": f"Wallet balance low (₹{wallet_balance:.2f})",
+                          "cta": "Top up", "href": "/app/wallet"})
+    if inbox.get("total", 0) > 0:
+        attention.append({"level": "info", "icon": "inbox", "msg": f"{inbox['total']} unread message{'s' if inbox['total'] != 1 else ''} in your inbox",
+                          "cta": "Open inbox", "href": "/app/chat"})
+    if failures_24h > 0:
+        attention.append({"level": "warn", "icon": "alert", "msg": f"{failures_24h} message{'s' if failures_24h != 1 else ''} failed in last 24 h",
+                          "cta": "Review", "href": "/app/delivery"})
+    if open_tickets > 0:
+        attention.append({"level": "info", "icon": "ticket", "msg": f"{open_tickets} open support ticket{'s' if open_tickets != 1 else ''}",
+                          "cta": "View", "href": "/app/support"})
+    if flows_count == 0:
+        attention.append({"level": "info", "icon": "flow", "msg": "No chatbot yet — clone a template in 1 click",
+                          "cta": "Browse Marketplace", "href": "/app/marketplace"})
+
+    return {
+        "today_sent": today_sent,
+        "attention": attention[:6],
+        "modules": {
+            "inbox": {
+                "unread": inbox.get("total", 0),
+                "conversations": inbox.get("count", 0),
+                "last_inbound_at": (last_inbound or {}).get("sent_at"),
+                "href": "/app/chat",
+            },
+            "campaigns": {
+                "running": running,
+                "scheduled": scheduled,
+                "last_name": (last_campaign or {}).get("name"),
+                "last_status": (last_campaign or {}).get("status"),
+                "href": "/app/campaigns",
+            },
+            "leads": {
+                "new": new_leads,
+                "qualified": qualified,
+                "href": "/app/leads",
+            },
+            "channels": {
+                "total": channels_count,
+                "active": channels_active,
+                "href": "/app/whatsapp",
+            },
+            "wallet": {
+                "balance_inr": round(wallet_balance, 2),
+                "low": wallet_balance < threshold,
+                "billing_mode": tenant.get("billing_mode") or "byoc",
+                "href": "/app/wallet",
+            },
+            "flows": {
+                "total": flows_count,
+                "published": flows_published,
+                "href": "/app/flows",
+            },
+            "erp": {
+                "api_keys": api_keys_active,
+                "webhooks": webhooks_active,
+                "scheduled_pending": pending_scheduled,
+                "href": "/app/integrations",
+            },
+            "support": {
+                "open": open_tickets,
+                "href": "/app/support",
+            },
+        },
+    }
+
+
+
 @router.get("/delivery")
 async def delivery_dashboard(current=Depends(get_current_user), days: int = 7, limit: int = 50):
     """Webhook delivery status dashboard.

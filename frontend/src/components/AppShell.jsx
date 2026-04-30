@@ -4,9 +4,11 @@ import {
   LayoutDashboard, MessageSquare, Send, Users, MessagesSquare, Bot,
   FileText, Workflow, BarChart3, CreditCard, Plug, UserPlus, BookOpen, Settings as SettingsIcon, LogOut,
   Menu, X, ChevronRight, AlertTriangle, Sparkles, Store, Activity, Shield, LifeBuoy, Wallet, Banknote,
+  Search,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import AIAssistant from './AIAssistant';
+import CommandPalette from './CommandPalette';
 import api from '../lib/api';
 
 const TENANT_NAV = [
@@ -256,6 +258,16 @@ export default function AppShell() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <button
+                data-testid="open-palette"
+                onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}
+                className="hidden items-center gap-2 rounded-md border border-zinc-200 bg-white/70 px-2.5 py-1 text-xs text-zinc-600 hover:bg-zinc-50 sm:inline-flex"
+                title="Quick jump (⌘K / Ctrl K)"
+              >
+                <Search className="h-3 w-3" />
+                Jump to…
+                <kbd className="rounded border border-zinc-300 bg-zinc-50 px-1 font-mono text-[9px]">⌘K</kbd>
+              </button>
               {!isSuper && wallet?.billing_mode === 'wallet' && (
                 <button
                   data-testid="topbar-wallet-pill"
@@ -293,6 +305,7 @@ export default function AppShell() {
         </main>
       </div>
       {!isSuper && <AIAssistant />}
+      {!isSuper && <CommandPalette />}
     </div>
   );
 }
