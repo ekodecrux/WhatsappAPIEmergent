@@ -125,8 +125,18 @@ Create a complete end-to-end WhatsApp SaaS subscription platform that integrates
 - **New "Pricing & Discounts" tab** — platform-wide view: top-up revenue, wallet COGS, approx margin, # tenants on discount, # on custom pricing; per-tenant table with discount badges
 - **Backend**: `PATCH /admin/tenants/{tid}` now accepts `discount_pct` (0-100, validated) + `billing_mode` (wallet/byoc); `/wallet/topup/verify` applies tenant's `discount_pct` as bonus credit on every Razorpay top-up
 
-## Backlog
-- **P1**:
+## Implemented (this session — Apr 2026 part 5 — Quick-Win Sprint)
+**5 world-class features + sidebar IA collapse, ~1 pass:**
+- **(1) CTWA attribution** — Meta inbound webhook now captures `referral` payload (source_url, headline, ad source_id) and tags conversation with `source='ctwa'`. Chat header shows purple "from ad" badge; right sidebar shows CTWA attribution panel.
+- **(2) Quick replies** — full CRUD (`/api/quick-replies`) + slash-trigger popover in Live Chat — type `/` to filter saved snippets, click to insert. Per-snippet use_count tracking. Manage modal in chat header.
+- **(4) Cart recovery automation** — `POST /api/integrations/erp/abandon-cart` (E.164 phone + delay 1–10080 min) schedules into `scheduled_messages`; new background scheduler (30s tick) wallet-bills, persists to chat history, dispatches `message.sent`/`message.failed` webhook, with auto-refund on failure.
+- **(6) Tenant impersonation** — `POST /api/admin/tenants/{tid}/impersonate` issues short-lived JWT for first admin of target tenant; "View as" button on tenant rows; sticky amber banner reads "Viewing as X at Y · impersonated by superadmin@…"; "Return to platform" restores super-admin session.
+- **(7) Green Tick application helper** — emerald wizard on Channels page with 6 progressive steps (Business Manager verify → display name → profile → 100+ inbound → apply → wait), checklist persists to localStorage, includes copy-paste press-release template for the 3-article requirement.
+- **Sidebar IA collapse** — 18 flat items → 5 grouped sections (Engage / Customers / Insights / Build / Account) with tightened labels (Dashboard, Inbox, Channels, Developer, Chatbots). Super-admin sidebar unchanged (6 platform items).
+- **PostHog runtime crash fixed** — disabled buggy `capture_dead_clicks` autocapture in `index.html`.
+- **Testing**: 15/15 backend pytest PASS (incl. live 90s scheduler poll). Frontend zero console/page errors verified.
+
+
   - Bulk-translate flows (1 click → 5 languages)
   - Tenant impersonation ("View as tenant X" for super admin)
   - Custom domain mapping for tenant white-labeling
