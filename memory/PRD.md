@@ -137,13 +137,13 @@ Create a complete end-to-end WhatsApp SaaS subscription platform that integrates
 - **Testing**: 15/15 backend pytest PASS (incl. live 90s scheduler poll). Frontend zero console/page errors verified.
 
 
-  - Bulk-translate flows (1 click → 5 languages)
-  - Tenant impersonation ("View as tenant X" for super admin)
-  - Custom domain mapping for tenant white-labeling
-- **P2**:
-  - Lead scoring history charts
-  - DRY inbound handlers (twilio_inbound + meta_webhook_inbound share ~80%)
-  - Background-task email sends instead of inline (snappier UX on ticket replies)
-- **P3**:
-  - Mobile app shell
-  - Public API docs site
+## Implemented (this session — May 2026 part 6 — Catalog & AI Sprint)
+**Final batch — all wired & tested (iter-13 100% pass):**
+- **(1) WhatsApp Catalog page** (`/app/catalog`) — full CRUD for products + 1-click Razorpay pay-link generator that copies a wa.me-pasteable WhatsApp message to clipboard. Backend: `/api/catalog/products`, `/api/catalog/checkout`, `/api/catalog/checkouts`.
+- **(2) Catalog & Checkout flow nodes** — new `Show products` (catalog) and `Collect payment` (checkout) nodes in the Visual Flow Builder. Server-side flow-engine handlers send a formatted product list / generate a Razorpay pay-link inline during a chatbot conversation.
+- **(3) AI Spam-score widget** — debounced inline check on the Campaigns composer; heuristic + Groq LLM blend returns 0–100 score, label (good/warning/danger), issues[], and a 1-click rewrite. Endpoint: `POST /api/ai-assist/spam-score`.
+- **(4) Optimal-send-time hint** — Mongo aggregation over inbound replies of last 60 days returns best hour + day with confidence label. Endpoint: `GET /api/ai-assist/optimal-send-time`.
+- **(5) AI Reply Coach (ghost-text autocomplete)** — type 3+ chars in chat input → debounced `POST /api/ai-assist/reply-coach` returns a Tab-acceptable continuation; gracefully pads a leading space when needed.
+- **(6) Sandbox mode** — 1-click toggle on Settings: seeds 50 conversations, 200 leads, 5 campaigns tagged `sandbox=true`; disable cleans up. Endpoints: `/api/sandbox/{enable,disable,status}`.
+- **(7) Annual billing toggle** — Subscription page now has Monthly/Annual switcher; backend accepts `billing_cycle=annual` in `/api/billing/orders` and applies pre-set `annual_inr` discount price.
+- **Tests**: Iteration 13 — backend 8/8 pytest pass + frontend 7/7 wired flows verified end-to-end.

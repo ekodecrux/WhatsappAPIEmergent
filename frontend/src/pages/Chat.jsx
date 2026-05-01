@@ -79,7 +79,10 @@ export default function Chat() {
   };
   const acceptGhost = () => {
     if (!ghost) return;
-    setInput((cur) => cur + ghost);
+    setInput((cur) => {
+      const needsSpace = cur.length > 0 && !/\s$/.test(cur) && !/^\s/.test(ghost);
+      return cur + (needsSpace ? ' ' : '') + ghost;
+    });
     setGhost('');
     setTimeout(() => inputRef.current?.focus(), 30);
   };
@@ -292,7 +295,7 @@ export default function Chat() {
                       className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 truncate text-sm text-zinc-400"
                       style={{ paddingLeft: `${input.length * 7.2}px`, maxWidth: 'calc(100% - 24px)' }}
                     >
-                      {ghost}
+                      {(input.length > 0 && !/\s$/.test(input) && !/^\s/.test(ghost)) ? '\u00A0' : ''}{ghost}
                       <kbd className="ml-2 rounded border border-zinc-300 bg-zinc-50 px-1 py-0.5 font-mono text-[9px] text-zinc-600">Tab</kbd>
                     </span>
                   )}
