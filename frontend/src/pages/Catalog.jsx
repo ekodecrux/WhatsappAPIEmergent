@@ -102,7 +102,7 @@ export default function Catalog() {
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setOpen(false)}>
-          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-md border border-zinc-200 bg-white p-5">
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-h-[90vh] overflow-y-auto max-w-md rounded-md border border-zinc-200 bg-white p-5">
             <div className="mb-3 flex items-center justify-between">
               <h3 className="font-display text-lg font-semibold">{editing ? 'Edit product' : 'New product'}</h3>
               <button onClick={() => setOpen(false)}><X className="h-4 w-4" /></button>
@@ -130,7 +130,7 @@ export default function Catalog() {
 
       {checkingOut && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setCheckingOut(null)}>
-          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-md border border-zinc-200 bg-white p-5">
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-h-[90vh] overflow-y-auto max-w-md rounded-md border border-zinc-200 bg-white p-5">
             <div className="mb-3 flex items-center justify-between">
               <h3 className="font-display text-lg font-semibold">Send pay-link for {checkingOut.name}</h3>
               <button onClick={() => setCheckingOut(null)}><X className="h-4 w-4" /></button>

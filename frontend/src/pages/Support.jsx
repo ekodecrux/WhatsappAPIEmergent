@@ -127,7 +127,7 @@ export default function Support() {
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <form onSubmit={submit} className="w-full max-w-lg rounded-md border border-zinc-200 bg-white p-6">
+          <form onSubmit={submit} className="w-full max-h-[90vh] overflow-y-auto max-w-lg rounded-md border border-zinc-200 bg-white p-6">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="font-display text-lg font-semibold">New support ticket</h3>
               <button type="button" onClick={() => setOpen(false)}><X className="h-4 w-4" /></button>

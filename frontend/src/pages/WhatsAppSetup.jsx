@@ -271,7 +271,7 @@ export default function WhatsAppSetup() {
       {/* Modal */}
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-md border border-zinc-200 bg-white p-6 shadow-xl">
+          <div className="w-full max-h-[90vh] overflow-y-auto max-w-lg rounded-md border border-zinc-200 bg-white p-6 shadow-xl">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="font-display text-lg font-semibold">Connect WhatsApp Business</h3>
               <button onClick={() => setOpen(false)} className="text-zinc-500 hover:text-zinc-900"><X className="h-4 w-4" /></button>
@@ -349,7 +349,7 @@ export default function WhatsAppSetup() {
       {/* Test send modal */}
       {testModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-md border border-zinc-200 bg-white p-6 shadow-xl">
+          <div className="w-full max-h-[90vh] overflow-y-auto max-w-lg rounded-md border border-zinc-200 bg-white p-6 shadow-xl">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="font-display text-lg font-semibold inline-flex items-center gap-2">
                 <Zap className="h-4 w-4 text-green-600" /> Test send · {testModal.cred.name}

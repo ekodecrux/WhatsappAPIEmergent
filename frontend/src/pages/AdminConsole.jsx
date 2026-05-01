@@ -1094,7 +1094,7 @@ function DomainsTab() {
 
       {revoking && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setRevoking(null)}>
-          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-md border border-zinc-200 bg-white p-5">
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-h-[90vh] overflow-y-auto max-w-md rounded-md border border-zinc-200 bg-white p-5">
             <h3 className="mb-2 font-display text-lg font-semibold">Revoke {revoking.hostname}?</h3>
             <p className="mb-3 text-xs text-zinc-600">
               Tenant <span className="font-medium">{revoking.tenant_name}</span> will lose white-label access on this domain. They'll see the revocation reason in their Branding panel.

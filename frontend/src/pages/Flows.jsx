@@ -296,7 +296,7 @@ export default function Flows() {
       {/* AI generator modal */}
       {aiOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-md border border-zinc-200 bg-white p-6">
+          <div className="w-full max-h-[90vh] overflow-y-auto max-w-lg rounded-md border border-zinc-200 bg-white p-6">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="inline-flex items-center gap-2 font-display text-lg font-semibold">
                 <Wand2 className="h-4 w-4 text-wa-dark" /> Generate flow
@@ -339,7 +339,7 @@ export default function Flows() {
       {/* QR modal */}
       {qr && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-md border border-zinc-200 bg-white p-6">
+          <div className="w-full max-h-[90vh] overflow-y-auto max-w-md rounded-md border border-zinc-200 bg-white p-6">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="font-display text-lg font-semibold">Deploy as QR · {qr.flow.name}</h3>
               <button onClick={() => setQr(null)}><X className="h-4 w-4" /></button>
@@ -368,7 +368,7 @@ export default function Flows() {
       {/* Analytics modal */}
       {analytics && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-2xl rounded-md border border-zinc-200 bg-white p-6">
+          <div className="w-full max-h-[90vh] overflow-y-auto max-w-2xl rounded-md border border-zinc-200 bg-white p-6">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="font-display text-lg font-semibold">Analytics · {analytics.flow.name}</h3>
               <button onClick={() => setAnalytics(null)}><X className="h-4 w-4" /></button>
@@ -426,7 +426,7 @@ export default function Flows() {
       {/* Languages modal */}
       {langModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-md border border-zinc-200 bg-white p-6">
+          <div className="w-full max-h-[90vh] overflow-y-auto max-w-lg rounded-md border border-zinc-200 bg-white p-6">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="font-display text-lg font-semibold inline-flex items-center gap-2">
                 <Languages className="h-4 w-4 text-wa-dark" /> Translations · {langModal.flow.name}
@@ -484,7 +484,7 @@ export default function Flows() {
       {/* Publish to marketplace modal */}
       {pubModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-md border border-zinc-200 bg-white p-6">
+          <div className="w-full max-h-[90vh] overflow-y-auto max-w-lg rounded-md border border-zinc-200 bg-white p-6">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="font-display text-lg font-semibold inline-flex items-center gap-2">
                 <Store className="h-4 w-4 text-wa-dark" /> Publish to marketplace

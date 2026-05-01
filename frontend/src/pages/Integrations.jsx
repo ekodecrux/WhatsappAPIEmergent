@@ -297,7 +297,7 @@ export default function Integrations() {
 
       {openKey && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-md border border-zinc-200 bg-white p-6">
+          <div className="w-full max-h-[90vh] overflow-y-auto max-w-md rounded-md border border-zinc-200 bg-white p-6">
             <div className="mb-4 flex items-center justify-between"><h3 className="font-display text-lg font-semibold">New API key</h3><button onClick={() => setOpenKey(false)}><X className="h-4 w-4" /></button></div>
             <form onSubmit={createKey} className="space-y-3">
               <input data-testid="key-name" required placeholder="Name (e.g. Odoo prod)" value={keyForm.name} onChange={(e) => setKeyForm({ name: e.target.value })} className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" />
@@ -310,7 +310,7 @@ export default function Integrations() {
 
       {openHook && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-md border border-zinc-200 bg-white p-6">
+          <div className="w-full max-h-[90vh] overflow-y-auto max-w-lg rounded-md border border-zinc-200 bg-white p-6">
             <div className="mb-4 flex items-center justify-between"><h3 className="font-display text-lg font-semibold">New webhook</h3><button onClick={() => setOpenHook(false)}><X className="h-4 w-4" /></button></div>
             <form onSubmit={createHook} className="space-y-3">
               <input data-testid="hook-name" required placeholder="Name (e.g. Odoo CRM)" value={hookForm.name} onChange={(e) => setHookForm({ ...hookForm, name: e.target.value })} className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" />

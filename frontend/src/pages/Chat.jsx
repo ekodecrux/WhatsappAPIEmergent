@@ -394,7 +394,7 @@ export default function Chat() {
 
       {showQRModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowQRModal(false)}>
-          <div className="w-full max-w-lg rounded-md border border-zinc-200 bg-white p-5" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-h-[90vh] overflow-y-auto max-w-lg rounded-md border border-zinc-200 bg-white p-5" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 flex items-center justify-between">
               <h3 className="font-display text-lg font-semibold inline-flex items-center gap-2"><Zap className="h-4 w-4 text-wa-dark" /> Quick replies</h3>
               <button onClick={() => setShowQRModal(false)}><X className="h-4 w-4" /></button>
