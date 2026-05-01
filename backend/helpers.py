@@ -432,12 +432,13 @@ def groq_chat(system: str, user_msg: str, max_tokens: int = 200) -> str:
         )
         return resp.choices[0].message.content or ""
     except Exception as e:
-        # Always try Gemini failover — if Groq isn't installed/keyed, we still serve users.
+        # Failover to Gemini ONLY for rate-limit / transient outages — re-surface real bugs.
+        if not _is_groq_rate_limit(e) and "not configured" not in str(e).lower():
+            logging.getLogger("wabridge.llm").warning("Groq error (non-rate-limit) → falling back to Gemini: %s", e)
         gemini_result = _gemini_chat_sync(system, user_msg, max_tokens=max_tokens)
         if gemini_result and not gemini_result.startswith("[AI unavailable"):
-            # Optional dev signal
             if _is_groq_rate_limit(e):
-                logging.getLogger("wabridge.llm").info("Groq rate-limit — failed over to Gemini Flash")
+                logging.getLogger("wabridge.llm").info("llm.failover provider=gemini reason=rate_limit")
             return gemini_result
         return f"[AI unavailable: {e}]"
 

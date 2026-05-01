@@ -111,7 +111,7 @@ At 1,000 paying tenants the platform clears **₹1.15 Cr/month gross** at ~95% g
 - **ERP API Passthrough** — wallet-billed external send endpoints (`/api/integrations/erp/send-message`, `/send-bulk`, `/send-template`) with HMAC-signed outbound webhooks (`X-Wabridge-Signature-256`), per-key 120 req/min rate limiting, full delivery activity log.
 
 ### 3.7 AI Surface
-A single **Emergent LLM key** (Groq-backed `llama-3.3-70b-versatile`) powers:
+A **hybrid LLM stack** (Groq llama-3.3-70b primary + Gemini 2.5 Flash auto-failover via the Emergent universal key) powers:
 - AI Assistant (context-aware chat on every page → can draft a flow / draft a campaign / send a test message / raise a support ticket inline)
 - AI Spam-score + rewrite suggestions
 - AI Reply Coach
@@ -119,7 +119,7 @@ A single **Emergent LLM key** (Groq-backed `llama-3.3-70b-versatile`) powers:
 - Multilingual translation (5 languages)
 - Optimal Send Time rationale
 
-**Cost per tenant per month: <₹20.** AI is a feature multiplier, not a cost line item.
+When Groq's free tier rate-limits (30 req/min), every endpoint **transparently fails over to Gemini Flash** with zero user-visible downtime. Structured `llm.failover` log lines make the swap observable. **Cost per tenant per month: <₹20.** AI is a feature multiplier, not a cost line item.
 
 ### 3.8 Enterprise-Readiness Surface (NEW — SOC 2 Type 1 aligned)
 Shipped in Feb 2026 — closes the top enterprise-security gaps identified in our third-party gap analysis:
@@ -151,19 +151,19 @@ Both import paths flow into the same `leads` pipeline → lead scoring → auto-
 
 ---
 
-### Day 0 — First-Run Onboarding (8 minutes)
-The Mission-Control dashboard shows a **6-step onboarding checklist**:
+### Day 0 — First-Run Onboarding (5 minutes)
+The Mission-Control dashboard shows a **6-step onboarding checklist**. The first and biggest step now opens our **guided 4-step wizard** at `/app/connect-whatsapp`:
 
 | Step | Action | Outcome |
 |---|---|---|
-| 1 | **Connect WhatsApp** → pick Twilio Sandbox (instant, for testing) OR Meta Cloud API (production) | Channel verified, message capacity unlocked |
-| 2 | **Send a test message** to your own phone | Confirms outbound + inbound webhook working |
-| 3 | **Import contacts** (CSV with phone, name, email) | Leads pop up in CRM |
+| 1 | **Connect WhatsApp** → wizard auto-detects Sandbox vs Production, runs Twilio diagnostics on failure, and surfaces the exact fix inline | Channel verified in under 3 minutes |
+| 2 | **Send a test message** to your own phone (built into the wizard) | Confirms outbound + inbound webhook working |
+| 3 | **Import contacts** — CSV upload OR paste a public URL (we extract phone numbers + emails) | Leads pop up in CRM |
 | 4 | **Run "Starter Pack" 1-click seeder** | Adds 3 sample flows, 5 templates, 2 quick replies |
 | 5 | **Top up wallet** with ₹500 (Razorpay UPI) | First 5,000 messages of headroom |
 | 6 | **Invite a teammate** | Multi-user collaboration unlocked |
 
-✅ **Outcome**: tenant is fully operational and can send their first real campaign within 8 minutes.
+✅ **Outcome**: tenant is fully operational and can send their first real campaign within 5 minutes — down from 8 minutes pre-wizard.
 
 ---
 
@@ -308,6 +308,8 @@ The platform owner sees a **completely separate** purple-themed console at `/app
 - ✅ Super Admin platform separation + impersonation
 - ✅ **Enterprise-readiness sprint**: Audit logging · RBAC v1 · MFA (TOTP) · Inactive-user auto-revoke · Data retention purge
 - ✅ Lead acquisition: CSV upload + Web-page discovery
+- ✅ **Onboarding wizard**: single-screen 4-step `/app/connect-whatsapp` with auto-Twilio-diagnose on failure (cuts time-to-first-message from 8 min → 5 min)
+- ✅ **AI resilience**: hybrid Groq → Gemini Flash auto-failover so rate-limits never break the product
 
 ### Q2 2026 — Conversion
 - 🟡 SOC 2 Type 1 external audit (code-side is 70% ready after Feb sprint)
@@ -348,14 +350,14 @@ The platform owner sees a **completely separate** purple-themed console at `/app
 | Metric (today) | Value |
 |---|---|
 | Plans live | 3 (Free, Starter ₹499, Pro ₹999) + Annual (17% off) |
-| Pages built | 24 tenant pages + 8 super-admin tabs |
-| API endpoints | 100+ (all `/api/*` prefixed) |
-| AI surfaces | 5 (assistant, reply coach, spam-score, scaffolder, translator) |
+| Pages built | 25 tenant pages + 8 super-admin tabs |
+| API endpoints | 105+ (all `/api/*` prefixed) |
+| AI surfaces | 5 (assistant, reply coach, spam-score, scaffolder, translator) — with Groq → Gemini auto-failover |
 | RBAC roles | 6 predefined + 30+ fine-grained permissions |
 | Security posture | MFA (TOTP) · Audit logs (365d) · 90-day inactive auto-revoke · GDPR data-retention purge |
-| Test coverage | 15 iterations · 30+ pytest cases · 100% frontend selectors |
-| Lines of code | ~28,000 (Python + JSX) |
-| Time-to-MVP | 5 weeks |
+| Test coverage | 16 iterations · 40+ pytest cases · 100% frontend selectors |
+| Lines of code | ~29,500 (Python + JSX) |
+| Time-to-first-message | 5 minutes (down from 8 — guided wizard) |
 
 ### What ₹2 Cr seed unlocks
 1. **Marketing — ₹70L**: Performance ads + content + agency partnerships (target 1,000 paying tenants by month 9).
@@ -387,4 +389,4 @@ The platform owner sees a **completely separate** purple-themed console at `/app
 
 **wabridge** — building the WhatsApp commerce + engagement OS for the next billion businesses.
 
-*Document prepared: Feb 2026 · Version 1.1 · Investor & Promoter Edition (Enterprise-Readiness Update)*
+*Document prepared: Feb 2026 · Version 1.2 · Investor & Promoter Edition (UX & Resilience Update)*

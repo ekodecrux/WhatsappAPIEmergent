@@ -147,6 +147,11 @@ Create a complete end-to-end WhatsApp SaaS subscription platform that integrates
 - **(6) Sandbox mode** — 1-click toggle on Settings: seeds 50 conversations, 200 leads, 5 campaigns.
 - **(7) Annual billing toggle** — Subscription page Monthly/Annual switcher.
 
+## Implemented (this session — May 2026 part 9 — UX Wizard + LLM Failover)
+**Closes 2 user-reported pain points (iter-16: backend 100% pass, frontend Steps 1-2 + open-wizard 100% pass):**
+- **Hybrid LLM failover (Groq → Gemini Flash)** — when Groq returns 429 / quota / rate-limit, every AI surface (spam-score, reply-coach, ai_suggest_reply, ai_analyze_sentiment, flow scaffolder, translator) transparently falls back to Gemini 2.5 Flash via `emergentintegrations` + `EMERGENT_LLM_KEY`. Zero downtime, structured `llm.failover` log line for observability. Non-rate-limit Groq errors are now logged at WARN level so real bugs aren't masked.
+- **Twilio Setup Wizard** (`/app/connect-whatsapp`) — single full-screen 4-step wizard replacing the multi-modal Setup → Test Send → Diagnose → Sandbox Info navigation. Step 1: pick Sandbox / Production. Step 2: paste credentials with inline sandbox-keyword instructions. Step 3: send test → on failure, **automatically runs `/whatsapp/twilio/diagnose`** and renders account_status + sender list + suggested action inline. Step 4: success state with one-click links to Campaigns / Flows. Onboarding checklist now points the "Connect WhatsApp" step to the new wizard. Legacy `/app/whatsapp` page still works and got a "Use guided wizard" CTA for opt-in.
+
 ## Implemented (this session — May 2026 part 8 — Enterprise-Readiness Sprint)
 **Closed 5 SOC 2 + RBAC gaps from gap-analysis doc (iter-15: backend 100% pass):**
 - **Audit Logging Middleware** (SOC-T1 + SOC-T2) — pure ASGI middleware captures every POST/PATCH/PUT/DELETE on `/api/*`. Writes `{user_id, tenant_id, method, endpoint, query, status, duration_ms, ip, ua, ts}` to immutable `audit_logs` collection with **365-day TTL**. Skips high-volume polling endpoints (`ai-assist/*`, `assistant/chat`, `ws`, `branding/public`, `health`).

@@ -30,7 +30,7 @@ export default function ConnectWhatsApp() {
   const [savingCred, setSavingCred] = useState(false);
 
   // Step 3 — test send
-  const [testTo, setTestTo] = useState('+91');
+  const [testTo, setTestTo] = useState('');
   const [testText, setTestText] = useState('Hello! This is a test message from my WhatsApp business account.');
   const [testResult, setTestResult] = useState(null);
   const [testBusy, setTestBusy] = useState(false);
