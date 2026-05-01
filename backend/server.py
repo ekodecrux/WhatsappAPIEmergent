@@ -53,6 +53,8 @@ async def lifespan(app: FastAPI):
     await db.api_key_usage.create_index([("bucket", 1)], expireAfterSeconds=300)
     await db.quick_replies.create_index([("tenant_id", 1), ("shortcut", 1)], unique=True)
     await db.scheduled_messages.create_index([("status", 1), ("send_at", 1)])
+    await db.tenant_domains.create_index([("hostname", 1), ("status", 1)])
+    await db.tenant_domains.create_index([("tenant_id", 1), ("created_at", -1)])
     await db.scheduled_messages.create_index([("tenant_id", 1), ("created_at", -1)])
 
     # Seed superadmin user (idempotent)

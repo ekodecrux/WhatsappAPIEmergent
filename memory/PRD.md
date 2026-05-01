@@ -139,6 +139,24 @@ Create a complete end-to-end WhatsApp SaaS subscription platform that integrates
 
 ## Implemented (this session — May 2026 part 6 — Catalog & AI Sprint)
 **Final batch — all wired & tested (iter-13 100% pass):**
+- **(1) WhatsApp Catalog page** (`/app/catalog`) — full CRUD for products + 1-click Razorpay pay-link generator that copies a wa.me-pasteable WhatsApp message to clipboard.
+- **(2) Catalog & Checkout flow nodes** — new `Show products` (catalog) and `Collect payment` (checkout) nodes in the Visual Flow Builder.
+- **(3) AI Spam-score widget** — debounced inline check on the Campaigns composer (heuristic + Groq LLM blend).
+- **(4) Optimal-send-time hint** — Mongo aggregation over inbound replies of last 60 days returns best hour + day.
+- **(5) AI Reply Coach (ghost-text autocomplete)** — Tab-acceptable continuation in chat input.
+- **(6) Sandbox mode** — 1-click toggle on Settings: seeds 50 conversations, 200 leads, 5 campaigns.
+- **(7) Annual billing toggle** — Subscription page Monthly/Annual switcher.
+
+## Implemented (this session — May 2026 part 7 — Custom Domain & White-Label)
+**Tenant white-labeling shipped (iter-14: backend 12/12 PASS, frontend 100%):**
+- **Branding overrides** — per-tenant logo, brand name, primary color, favicon, login hero text, full custom CSS injection. Endpoints: `GET/PATCH /api/branding`. Hex-color validation enforced.
+- **Custom domain mapping** — tenants can add `chat.acme.com`-style hostnames at `/app/branding`. Backend issues a TXT verification token; UI shows TXT + CNAME instructions inline. Verification uses `dnspython` to lookup `_wabridge.<hostname>` TXT records. Endpoints: `POST /api/branding/domains`, `POST /api/branding/domains/{id}/verify`, `DELETE /api/branding/domains/{id}`.
+- **Public hostname lookup** — unauthenticated `GET /api/branding/public?host=...` returns tenant branding for a verified domain. Used by frontend `BrandingContext` to white-label by hostname (skips on emergentagent.com preview hosts).
+- **Frontend BrandingContext** — fetches branding on app boot when on a custom domain, applies `document.title`, favicon, `--brand-primary` CSS var, and injects custom CSS via a singleton `<style id="tenant-custom-css">` tag. Login page + AppShell sidebar both render the tenant logo when present.
+- **Super Admin oversight** — new "Custom Domains" tab in `/app/admin` shows all tenant domains across the platform with status/plan/added-date filters; one-click revoke with reason persisted.
+- **Bug fix** — `lstrip('https://')` was wrongly stripping leading character SET; replaced with `removeprefix` (Python 3.9+) at both add-domain + public-lookup callsites.
+- **Indexes** — new compound indexes `tenant_domains(hostname,status)` and `tenant_domains(tenant_id,created_at)` for sub-millisecond public lookups at scale.
+**Final batch — all wired & tested (iter-13 100% pass):**
 - **(1) WhatsApp Catalog page** (`/app/catalog`) — full CRUD for products + 1-click Razorpay pay-link generator that copies a wa.me-pasteable WhatsApp message to clipboard. Backend: `/api/catalog/products`, `/api/catalog/checkout`, `/api/catalog/checkouts`.
 - **(2) Catalog & Checkout flow nodes** — new `Show products` (catalog) and `Collect payment` (checkout) nodes in the Visual Flow Builder. Server-side flow-engine handlers send a formatted product list / generate a Razorpay pay-link inline during a chatbot conversation.
 - **(3) AI Spam-score widget** — debounced inline check on the Campaigns composer; heuristic + Groq LLM blend returns 0–100 score, label (good/warning/danger), issues[], and a 1-click rewrite. Endpoint: `POST /api/ai-assist/spam-score`.

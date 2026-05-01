@@ -89,7 +89,7 @@ class DomainIn(BaseModel):
 
 @router.post("/domains")
 async def add_domain(payload: DomainIn, current=Depends(get_current_user)):
-    host = payload.hostname.strip().lower().lstrip("https://").lstrip("http://").rstrip("/")
+    host = payload.hostname.strip().lower().removeprefix("https://").removeprefix("http://").rstrip("/")
     if not HOSTNAME_RX.match(host):
         raise HTTPException(400, "Invalid hostname. Use a fully-qualified domain like chat.acme.com")
     if await db.tenant_domains.find_one({"hostname": host, "status": {"$ne": "revoked"}}):
@@ -165,7 +165,9 @@ async def verify_domain(did: str, current=Depends(get_current_user)):
 @router.delete("/domains/{did}")
 async def remove_domain(did: str, current=Depends(get_current_user)):
     res = await db.tenant_domains.delete_one({"id": did, "tenant_id": current["tenant_id"]})
-    return {"deleted": bool(res.deleted_count)}
+    if not res.deleted_count:
+        raise HTTPException(404, "Domain not found")
+    return {"deleted": True}
 
 
 # ============== Public lookup (unauthenticated) ==============
@@ -175,7 +177,7 @@ async def public_branding(host: str = Query(..., min_length=3, max_length=253)):
 
     Falls back to {} when no tenant is mapped → frontend renders default wabridge UI.
     """
-    h = host.strip().lower().lstrip("https://").lstrip("http://").rstrip("/")
+    h = host.strip().lower().removeprefix("https://").removeprefix("http://").rstrip("/")
     # Strip port if present
     h = h.split(":", 1)[0]
     d = await db.tenant_domains.find_one({"hostname": h, "status": "verified"}, {"_id": 0})
