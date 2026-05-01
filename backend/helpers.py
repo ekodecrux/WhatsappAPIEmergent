@@ -208,13 +208,48 @@ def send_whatsapp_via_twilio(account_sid: str, auth_token: str, from_addr: str, 
         return {"success": False, "error": str(e)}
 
 
-def validate_twilio_credentials(account_sid: str, auth_token: str) -> bool:
+def validate_twilio_credentials(account_sid: str, auth_token: str) -> dict:
+    """Verify Twilio credentials by fetching the account.
+
+    Returns: {"ok": bool, "error": str | None, "code": str | None,
+              "account_status": str | None, "account_type": str | None}
+    """
     try:
         c = get_twilio_client(account_sid, auth_token)
-        c.api.v2010.accounts(account_sid).fetch()
-        return True
-    except Exception:
-        return False
+        acct = c.api.v2010.accounts(account_sid).fetch()
+        return {
+            "ok": True,
+            "error": None,
+            "code": None,
+            "account_status": acct.status,
+            "account_type": acct.type,
+        }
+    except Exception as e:
+        msg = str(e)
+        # Map Twilio error codes to actionable messages
+        code = None
+        import re
+        m = re.search(r"HTTP\s+(\d+)|\b(2000\d|2010\d|2013\d)\b", msg)
+        if m:
+            code = m.group(0)
+        hint = None
+        low = msg.lower()
+        if "20003" in msg or "authenticate" in low or "401" in msg:
+            hint = "Auth failed — your Account SID and Auth Token don't match. Re-copy from Twilio Console → Account Info (make sure no leading/trailing spaces)."
+        elif "20404" in msg or "404" in msg:
+            hint = "Account SID not found. Check the Account SID under Twilio Console → Account Info."
+        elif "20429" in msg or "rate" in low:
+            hint = "Twilio rate-limited us. Wait 30 seconds and try again."
+        elif "timeout" in low or "timed out" in low:
+            hint = "Network timeout reaching Twilio. Check your internet / firewall."
+        return {
+            "ok": False,
+            "error": msg[:400],
+            "code": code,
+            "hint": hint,
+            "account_status": None,
+            "account_type": None,
+        }
 
 
 # ================ Meta Cloud (WhatsApp Business Cloud API) ================

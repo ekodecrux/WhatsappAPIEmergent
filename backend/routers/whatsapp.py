@@ -35,9 +35,15 @@ async def add_credential(payload: CredentialIn, current=Depends(get_current_user
     elif payload.provider == "twilio":
         if not (payload.account_sid and payload.auth_token and payload.whatsapp_from):
             raise HTTPException(400, "Twilio requires account_sid, auth_token and whatsapp_from")
-        is_valid = await run_sync(validate_twilio_credentials, payload.account_sid, payload.auth_token)
-        if not is_valid:
-            raise HTTPException(400, "Twilio credentials validation failed")
+        vres = await run_sync(validate_twilio_credentials, payload.account_sid, payload.auth_token)
+        if not vres.get("ok"):
+            parts = ["Twilio rejected these credentials."]
+            if vres.get("error"):
+                parts.append(vres["error"])
+            if vres.get("hint"):
+                parts.append(f"Tip: {vres['hint']}")
+            raise HTTPException(status_code=400, detail=" ".join(parts))
+        is_valid = True
         sid, tok, wfrom = payload.account_sid, payload.auth_token, payload.whatsapp_from
     else:  # meta_cloud
         if not (payload.access_token and payload.phone_number_id):
