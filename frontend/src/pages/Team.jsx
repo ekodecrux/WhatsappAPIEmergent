@@ -4,14 +4,23 @@ import { Plus, Trash2, X, Copy, Mail, Users, ShieldCheck, Power } from 'lucide-r
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 
-const ROLES = ['admin', 'member', 'viewer'];
+const ROLES = ['admin', 'support_agent', 'marketing_manager', 'billing_manager', 'viewer'];
+const ROLE_LABELS = {
+  owner: 'Owner',
+  admin: 'Admin',
+  support_agent: 'Support Agent',
+  marketing_manager: 'Marketing Manager',
+  billing_manager: 'Billing Manager',
+  viewer: 'Viewer',
+  member: 'Viewer',
+};
 
 export default function Team() {
   const { user } = useAuth();
   const [members, setMembers] = useState([]);
   const [invites, setInvites] = useState([]);
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ email: '', full_name: '', role: 'member' });
+  const [form, setForm] = useState({ email: '', full_name: '', role: 'viewer' });
   const [generated, setGenerated] = useState(null);
 
   const load = async () => {
@@ -27,7 +36,7 @@ export default function Team() {
       setGenerated(data);
       toast.success('Invite sent');
       setOpen(false);
-      setForm({ email: '', full_name: '', role: 'member' });
+      setForm({ email: '', full_name: '', role: 'viewer' });
       load();
     } catch (e) { toast.error(e?.response?.data?.detail || 'Failed'); }
   };
@@ -40,7 +49,8 @@ export default function Team() {
   const revokeInvite = async (id) => { await api.delete(`/team/invites/${id}`); load(); };
   const copy = (t) => { navigator.clipboard.writeText(t); toast.success('Copied'); };
 
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === 'admin' || user?.role === 'owner';
+  const isOwner = user?.role === 'owner';
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 p-6">
@@ -89,12 +99,12 @@ export default function Team() {
                     <div className="text-xs text-zinc-500">{mb.email}</div>
                   </td>
                   <td className="px-5 py-3">
-                    {isAdmin && mb.id !== user?.id ? (
+                    {isOwner && mb.id !== user?.id ? (
                       <select value={mb.role} onChange={(e) => updateMember(mb.id, { role: e.target.value })} className="rounded-md border border-zinc-200 bg-transparent px-1.5 py-0.5 text-xs">
-                        {ROLES.map(r => <option key={r}>{r}</option>)}
+                        {(mb.role === 'owner' ? ['owner', ...ROLES] : ROLES).map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
                       </select>
                     ) : (
-                      <span className="capitalize">{mb.role}</span>
+                      <span className="capitalize">{ROLE_LABELS[mb.role] || mb.role}</span>
                     )}
                   </td>
                   <td className="px-5 py-3">
@@ -162,7 +172,7 @@ export default function Team() {
               <input data-testid="invite-email" required type="email" placeholder="teammate@company.com" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" />
               <input placeholder="Full name (optional)" value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" />
               <select data-testid="invite-role" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm">
-                {ROLES.map(r => <option key={r}>{r}</option>)}
+                {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
               </select>
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={() => setOpen(false)} className="rounded-md border border-zinc-300 px-3 py-2 text-sm">Cancel</button>

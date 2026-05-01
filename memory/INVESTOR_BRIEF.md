@@ -121,6 +121,23 @@ A single **Emergent LLM key** (Groq-backed `llama-3.3-70b-versatile`) powers:
 
 **Cost per tenant per month: <₹20.** AI is a feature multiplier, not a cost line item.
 
+### 3.8 Enterprise-Readiness Surface (NEW — SOC 2 Type 1 aligned)
+Shipped in Feb 2026 — closes the top enterprise-security gaps identified in our third-party gap analysis:
+
+- **Audit Logging (SOC-T1 + SOC-T2)** — every mutating API call (POST / PATCH / DELETE) is written to an immutable `audit_logs` collection with a 365-day TTL. Fields captured: `user_id, tenant_id, method, endpoint, query, status, duration_ms, IP, user_agent, timestamp`. Viewable by Owner / Admin at `/app/security → Audit Trail` with filter by method + endpoint.
+- **RBAC v1 — 6 predefined roles** (RBAC-F1) — Owner, Admin, Support Agent, Marketing Manager, Billing Manager, Viewer. 30+ action-level permissions enforced via a FastAPI `require_permission(action)` dependency. Only the workspace Owner can change roles; cannot demote the last owner; cannot demote yourself. Legacy `admin`/`member` auto-maps without breaking existing tenants.
+- **MFA — Two-Factor Authentication (RBAC-F7)** — TOTP-based (Google Authenticator / 1Password / Authy). QR-code enrollment + 8 one-time backup codes. Required for Owner / Admin / Billing Manager roles. Challenge token is a short-lived (120s) JWT separate from the access token.
+- **90-day Inactive User Auto-Revoke (SOC-F1)** — hourly scheduler disables accounts idle >90 days. Warning emails go out at 60 / 75 / 89 days. Dashboard shows upcoming expiries at `/app/security → Inactive Users`.
+- **Data Retention Auto-Purge (SOC-F6)** — deleted tenants are hard-purged after 90 days (per-tenant override available) across 20+ collections — GDPR "right to be forgotten" compliant.
+
+### 3.9 Lead Acquisition (CSV + Web Scrape)
+Two complementary ways to build a contact list — because not every merchant starts with one:
+
+- **CSV Upload** — drop in a CSV with `phone, name, email, company` headers. De-dupes against existing leads, returns `inserted` / `skipped` counts. Handles 10,000+ rows in a single request.
+- **Web-Page Discovery** — paste a URL (your contact page, public directory, conference website). Server does a polite single-page fetch, strips scripts/styles, extracts E.164-normalised phone numbers + emails, highlights rows that already exist in your CRM. Merchant **manually selects** which rows to import — nothing auto-added. A compliance banner reminds that WhatsApp requires opt-in consent before messaging.
+
+Both import paths flow into the same `leads` pipeline → lead scoring → auto-reply rules → campaigns.
+
 ---
 
 ## 4. Step-by-Step User Guide
@@ -289,8 +306,12 @@ The platform owner sees a **completely separate** purple-themed console at `/app
 - ✅ Sandbox mode + 1-click Starter Pack
 - ✅ Custom Domain + Full White-label
 - ✅ Super Admin platform separation + impersonation
+- ✅ **Enterprise-readiness sprint**: Audit logging · RBAC v1 · MFA (TOTP) · Inactive-user auto-revoke · Data retention purge
+- ✅ Lead acquisition: CSV upload + Web-page discovery
 
 ### Q2 2026 — Conversion
+- 🟡 SOC 2 Type 1 external audit (code-side is 70% ready after Feb sprint)
+- 🟡 SSO — SAML + OIDC + SCIM (RBAC foundation is in place)
 - 🟡 Branding Preview iframe (WYSIWYG before going live)
 - 🟡 Bulk-translate flows (1 click → 5 languages)
 - 🟡 Lead-scoring history charts
@@ -327,11 +348,13 @@ The platform owner sees a **completely separate** purple-themed console at `/app
 | Metric (today) | Value |
 |---|---|
 | Plans live | 3 (Free, Starter ₹499, Pro ₹999) + Annual (17% off) |
-| Pages built | 23 tenant pages + 7 super-admin tabs |
-| API endpoints | 90+ (all `/api/*` prefixed) |
+| Pages built | 24 tenant pages + 8 super-admin tabs |
+| API endpoints | 100+ (all `/api/*` prefixed) |
 | AI surfaces | 5 (assistant, reply coach, spam-score, scaffolder, translator) |
-| Test coverage | 14 iterations · 12+ pytest cases · 100% frontend selectors |
-| Lines of code | ~25,000 (Python + JSX) |
+| RBAC roles | 6 predefined + 30+ fine-grained permissions |
+| Security posture | MFA (TOTP) · Audit logs (365d) · 90-day inactive auto-revoke · GDPR data-retention purge |
+| Test coverage | 15 iterations · 30+ pytest cases · 100% frontend selectors |
+| Lines of code | ~28,000 (Python + JSX) |
 | Time-to-MVP | 5 weeks |
 
 ### What ₹2 Cr seed unlocks
@@ -364,4 +387,4 @@ The platform owner sees a **completely separate** purple-themed console at `/app
 
 **wabridge** — building the WhatsApp commerce + engagement OS for the next billion businesses.
 
-*Document prepared: Feb 2026 · Version 1.0 · Investor & Promoter Edition*
+*Document prepared: Feb 2026 · Version 1.1 · Investor & Promoter Edition (Enterprise-Readiness Update)*

@@ -29,6 +29,7 @@ import Billing from './pages/Billing';
 import Integrations from './pages/Integrations';
 import Settings from './pages/Settings';
 import Branding from './pages/Branding';
+import Security from './pages/Security';
 import Team from './pages/Team';
 import UserGuide from './pages/UserGuide';
 
@@ -72,6 +73,7 @@ export default function App() {
               <Route path="team" element={<Team />} />
               <Route path="guide" element={<UserGuide />} />
               <Route path="branding" element={<Branding />} />
+              <Route path="security" element={<Security />} />
               <Route path="settings" element={<Settings />} />
             </Route>
 

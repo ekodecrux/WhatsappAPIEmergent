@@ -4,7 +4,7 @@ import {
   LayoutDashboard, MessageSquare, Send, Users, MessagesSquare, Bot,
   FileText, Workflow, BarChart3, CreditCard, Plug, UserPlus, BookOpen, Settings as SettingsIcon, LogOut,
   Menu, X, ChevronRight, AlertTriangle, Sparkles, Store, Activity, Shield, LifeBuoy, Wallet, Banknote,
-  Search, Package, Palette,
+  Search, Package, Palette, ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useBranding } from '../contexts/BrandingContext';
@@ -36,6 +36,7 @@ const TENANT_NAV = [
   { to: '/app/wallet', label: 'Wallet', icon: Wallet, group: 'account' },
   { to: '/app/billing', label: 'Subscription', icon: CreditCard, group: 'account' },
   { to: '/app/support', label: 'Support', icon: LifeBuoy, group: 'account' },
+  { to: '/app/security', label: 'Security', icon: ShieldCheck, group: 'account' },
   { to: '/app/settings', label: 'Settings', icon: SettingsIcon, group: 'account' },
 ];
 

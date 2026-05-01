@@ -65,7 +65,8 @@ async def get_current_user(authorization: str | None = Header(default=None)) -> 
 
 
 async def require_admin(user: dict = Depends(get_current_user)) -> dict:
-    if user.get("role") != "admin":
+    # Legacy shim — accepts the new RBAC owner + admin roles plus the legacy "admin" value.
+    if user.get("role") not in ("admin", "owner") and not user.get("is_superadmin"):
         raise HTTPException(status_code=403, detail="Admin only")
     return user
 

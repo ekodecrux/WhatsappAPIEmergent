@@ -147,6 +147,17 @@ Create a complete end-to-end WhatsApp SaaS subscription platform that integrates
 - **(6) Sandbox mode** — 1-click toggle on Settings: seeds 50 conversations, 200 leads, 5 campaigns.
 - **(7) Annual billing toggle** — Subscription page Monthly/Annual switcher.
 
+## Implemented (this session — May 2026 part 8 — Enterprise-Readiness Sprint)
+**Closed 5 SOC 2 + RBAC gaps from gap-analysis doc (iter-15: backend 100% pass):**
+- **Audit Logging Middleware** (SOC-T1 + SOC-T2) — pure ASGI middleware captures every POST/PATCH/PUT/DELETE on `/api/*`. Writes `{user_id, tenant_id, method, endpoint, query, status, duration_ms, ip, ua, ts}` to immutable `audit_logs` collection with **365-day TTL**. Skips high-volume polling endpoints (`ai-assist/*`, `assistant/chat`, `ws`, `branding/public`, `health`).
+- **RBAC v1 — 6 predefined roles** (RBAC-F1/F3/T1/T2) — Owner, Admin, Support Agent, Marketing Manager, Billing Manager, Viewer. Central `rbac.py` with full **permission matrix** (30+ actions) + `require_permission(action)` FastAPI dependency. First-registered user is auto-promoted to **owner**; only owners can change roles; cannot demote last owner. Legacy `admin`/`member` auto-map.
+- **MFA (TOTP)** (RBAC-F7) — pyotp + QR-code enrollment + 8 one-time backup codes (SHA-256 hashed). Login flow: password → `{mfa_required, challenge_token}` → `/api/mfa/challenge {code}` → access_token. Backup codes **one-time use** (invalidated after redemption). 2-minute challenge TTL.
+- **Auto-revoke inactive users** (SOC-F1) — hourly scheduler sweeps users idle >90 days → `is_active=false`. Warning emails auto-dispatched at 60/75/89 days.
+- **Data retention auto-purge** (SOC-F6) — tenants with `deleted_at` older than `retention_days` (default 90) are hard-purged across 20+ collections.
+- **Web-scrape lead discovery** (bonus — merchants without contact lists) — `POST /api/leads/scrape-url` fetches a public page, extracts E.164 phone numbers + emails with duplicate detection vs existing CRM. UI on `/app/leads` → Import dialog has **2 tabs (CSV / From Web Page)** with compliance banner.
+- **Frontend**: New `/app/security` page (3 tabs: MFA · Audit Trail · Inactive Users); MFA challenge UI in `AuthForm`; Team page shows 6-role labels with owner-only dropdown for role changes.
+- **Bug fixes from iter-15**: `DisableIn.code` + `ChallengeIn.code` max_length raised to 12 (accept 9-char backup codes `XXXX-XXXX`); team invite role validation pre-normalize to reject bogus values.
+
 ## Implemented (this session — May 2026 part 7 — Custom Domain & White-Label)
 **Tenant white-labeling shipped (iter-14: backend 12/12 PASS, frontend 100%):**
 - **Branding overrides** — per-tenant logo, brand name, primary color, favicon, login hero text, full custom CSS injection. Endpoints: `GET/PATCH /api/branding`. Hex-color validation enforced.

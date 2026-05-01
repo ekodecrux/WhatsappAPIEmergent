@@ -9,6 +9,7 @@ from helpers import (
     get_current_user, audit_log, generate_invite_token, hash_invite_token,
     hash_password, create_token, send_email, run_sync, trial_days_left,
 )
+from rbac import ROLES, normalize_role
 
 
 router = APIRouter(prefix="/team", tags=["team"])
@@ -16,10 +17,12 @@ router = APIRouter(prefix="/team", tags=["team"])
 
 @router.post("/invites")
 async def create_invite(payload: InviteIn, current=Depends(get_current_user)):
-    if current.get("role") != "admin":
-        raise HTTPException(403, "Only admins can invite teammates")
-    if payload.role not in ("admin", "member", "viewer"):
-        raise HTTPException(400, "Invalid role")
+    if current.get("role") not in ("owner", "admin"):
+        raise HTTPException(403, "Only owners and admins can invite teammates")
+    raw_role = (payload.role or "").lower().strip()
+    if raw_role not in ROLES or raw_role == "owner":
+        raise HTTPException(400, f"Invalid role. Pick one of: {', '.join(r for r in ROLES if r != 'owner')}")
+    role = normalize_role(raw_role)
 
     existing_user = await db.users.find_one({"email": payload.email.lower(), "tenant_id": current["tenant_id"]})
     if existing_user:
@@ -31,7 +34,7 @@ async def create_invite(payload: InviteIn, current=Depends(get_current_user)):
         "tenant_id": current["tenant_id"],
         "email": payload.email.lower(),
         "full_name": payload.full_name,
-        "role": payload.role,
+        "role": role,
         "token_hash": hash_invite_token(raw),
         "invited_by": current["id"],
         "expires_at": (now() + timedelta(days=7)).isoformat(),
@@ -65,8 +68,8 @@ async def list_invites(current=Depends(get_current_user)):
 
 @router.delete("/invites/{invite_id}")
 async def revoke_invite(invite_id: str, current=Depends(get_current_user)):
-    if current.get("role") != "admin":
-        raise HTTPException(403, "Admins only")
+    if current.get("role") not in ("owner", "admin"):
+        raise HTTPException(403, "Owners/admins only")
     res = await db.team_invites.delete_one({"id": invite_id, "tenant_id": current["tenant_id"]})
     return {"deleted": bool(res.deleted_count)}
 
@@ -132,13 +135,28 @@ async def list_members(current=Depends(get_current_user)):
 
 @router.patch("/members/{member_id}")
 async def update_member(member_id: str, body: dict, current=Depends(get_current_user)):
-    if current.get("role") != "admin":
-        raise HTTPException(403, "Admins only")
-    if member_id == current["id"] and body.get("role") and body["role"] != "admin":
-        raise HTTPException(400, "Cannot demote yourself")
+    if current.get("role") not in ("owner", "admin"):
+        raise HTTPException(403, "Owners/admins only")
+    target = await db.users.find_one({"id": member_id, "tenant_id": current["tenant_id"]}, {"_id": 0})
+    if not target:
+        raise HTTPException(404, "Member not found")
+    # Only owner can change roles (RBAC-F4)
+    if "role" in body:
+        if current.get("role") != "owner" and not current.get("is_superadmin"):
+            raise HTTPException(403, "Only the workspace owner can change roles")
+        new_role = normalize_role(body["role"])
+        if new_role not in ROLES:
+            raise HTTPException(400, "Invalid role")
+        # Prevent deposing the last owner
+        if target.get("role") == "owner" and new_role != "owner":
+            other_owners = await db.users.count_documents({"tenant_id": current["tenant_id"], "role": "owner", "id": {"$ne": member_id}})
+            if other_owners == 0:
+                raise HTTPException(400, "Cannot demote the last owner — promote someone else to owner first")
+        if member_id == current["id"] and new_role != "owner":
+            raise HTTPException(400, "Cannot demote yourself")
     upd = {}
-    if "role" in body and body["role"] in ("admin", "member", "viewer"):
-        upd["role"] = body["role"]
+    if "role" in body:
+        upd["role"] = normalize_role(body["role"])
     if "is_active" in body:
         upd["is_active"] = bool(body["is_active"])
     if not upd:
@@ -150,9 +168,12 @@ async def update_member(member_id: str, body: dict, current=Depends(get_current_
 
 @router.delete("/members/{member_id}")
 async def remove_member(member_id: str, current=Depends(get_current_user)):
-    if current.get("role") != "admin":
-        raise HTTPException(403, "Admins only")
+    if current.get("role") not in ("owner", "admin"):
+        raise HTTPException(403, "Owners/admins only")
     if member_id == current["id"]:
         raise HTTPException(400, "Cannot remove yourself")
+    target = await db.users.find_one({"id": member_id, "tenant_id": current["tenant_id"]}, {"_id": 0})
+    if target and target.get("role") == "owner":
+        raise HTTPException(400, "Cannot remove an owner — demote them first")
     res = await db.users.delete_one({"id": member_id, "tenant_id": current["tenant_id"]})
     return {"deleted": bool(res.deleted_count)}

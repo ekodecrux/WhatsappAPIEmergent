@@ -39,6 +39,7 @@ async def lifespan(app: FastAPI):
     await db.templates.create_index([("tenant_id", 1)])
     await db.api_keys.create_index("key_hash", unique=True)
     await db.audit_logs.create_index([("tenant_id", 1), ("created_at", -1)])
+    await db.audit_logs.create_index([("created_at_dt", 1)], expireAfterSeconds=31536000)  # 365d TTL (SOC-T2)
     await db.marketplace_templates.create_index([("created_at", -1)])
     await db.marketplace_templates.create_index([("downloads", -1)])
     await db.marketplace_templates.create_index([("category", 1)])
@@ -144,6 +145,8 @@ from routers import catalog as r_catalog  # noqa: E402
 from routers import ai_assist as r_ai_assist  # noqa: E402
 from routers import sandbox as r_sandbox  # noqa: E402
 from routers import branding as r_branding  # noqa: E402
+from routers import mfa as r_mfa  # noqa: E402
+from routers import security as r_security  # noqa: E402
 
 api_router.include_router(r_auth.router)
 api_router.include_router(r_otp.router)
@@ -167,8 +170,15 @@ api_router.include_router(r_catalog.router)
 api_router.include_router(r_ai_assist.router)
 api_router.include_router(r_sandbox.router)
 api_router.include_router(r_branding.router)
+api_router.include_router(r_mfa.router)
+api_router.include_router(r_security.router)
 
 app.include_router(api_router)
+
+
+# ===== Audit logging middleware (SOC-T1 + SOC-T2) =====
+from audit_middleware import AuditLogMiddleware  # noqa: E402
+app.add_middleware(AuditLogMiddleware, db=db)
 
 
 # ===== WebSocket for real-time chat =====

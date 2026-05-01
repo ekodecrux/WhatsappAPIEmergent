@@ -38,7 +38,7 @@ async def register(payload: RegisterIn):
         "email": payload.email.lower(),
         "password_hash": hash_password(payload.password),
         "full_name": payload.full_name,
-        "role": "admin",
+        "role": "owner",
         "is_active": True,
         "created_at": now().isoformat(),
     }
@@ -62,22 +62,38 @@ async def register(payload: RegisterIn):
         tenant_id=tenant_id,
         email=payload.email.lower(),
         full_name=payload.full_name,
-        role="admin",
+        role="owner",
         company_name=payload.company_name,
         plan="free",
         trial_days_left=365,
     )
 
 
-@router.post("/login", response_model=TokenOut)
+@router.post("/login")
 async def login(payload: LoginIn):
     user = await db.users.find_one({"email": payload.email.lower()})
     if not user or not verify_password(payload.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
+    # Blocked / deactivated users (SOC-F1 inactivity policy)
+    if user.get("is_active") is False:
+        raise HTTPException(
+            status_code=403,
+            detail="Account is disabled (inactivity or admin suspension). Contact your workspace owner.",
+        )
+
     tenant = await db.tenants.find_one({"id": user["tenant_id"]}, {"_id": 0})
     if not tenant:
         raise HTTPException(status_code=400, detail="Tenant not found")
+
+    # MFA gate (RBAC-F7): challenge before issuing the real token
+    if user.get("mfa_enabled"):
+        from routers.mfa import build_challenge_token
+        return {
+            "mfa_required": True,
+            "challenge_token": build_challenge_token(user["id"]),
+            "email": user["email"],
+        }
 
     await db.users.update_one({"id": user["id"]}, {"$set": {"last_login": now().isoformat()}})
 

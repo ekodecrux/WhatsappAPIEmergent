@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import api from '../lib/api';
-import { Plus, Search, Trash2, X, Upload, Filter, Star } from 'lucide-react';
+import { Plus, Search, Trash2, X, Upload, Filter, Star, Globe, Loader2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 
 const STATUS = ['new', 'contacted', 'qualified', 'converted', 'lost'];
@@ -23,7 +23,6 @@ export default function Leads() {
   const [open, setOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [form, setForm] = useState({ phone: '', name: '', email: '', company: '', notes: '' });
-  const [csv, setCsv] = useState('phone,name,email,company\n+919876543210,Aarav Mehta,aarav@acme.in,Acme');
 
   const load = async () => {
     const params = status ? `?status=${status}` : '';
@@ -60,33 +59,6 @@ export default function Leads() {
     load();
   };
 
-  const doImport = async (e) => {
-    e.preventDefault();
-    const lines = csv.split(/\n/).map(s => s.trim()).filter(Boolean);
-    const [hdr, ...rest] = lines;
-    const cols = hdr.split(',').map(s => s.trim());
-    const items = rest.map(line => {
-      const vals = line.split(',').map(s => s.trim());
-      const obj = {};
-      cols.forEach((c, i) => obj[c] = vals[i]);
-      return obj;
-    });
-    try {
-      const { data } = await api.post('/leads/import', { items });
-      toast.success(`Imported ${data.inserted}, skipped ${data.skipped}`);
-      setImportOpen(false);
-      load();
-    } catch { toast.error('Import failed'); }
-  };
-
-  const onFile = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => setCsv(String(ev.target?.result || ''));
-    reader.readAsText(file);
-  };
-
   return (
     <div className="mx-auto max-w-7xl space-y-6 p-6">
       <div className="flex flex-col items-start justify-between gap-3 md:flex-row md:items-center">
@@ -96,7 +68,7 @@ export default function Leads() {
         </div>
         <div className="flex items-center gap-2">
           <button data-testid="import-leads" onClick={() => setImportOpen(true)} className="inline-flex items-center gap-1.5 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50">
-            <Upload className="h-3.5 w-3.5" /> Import CSV
+            <Upload className="h-3.5 w-3.5" /> Import leads
           </button>
           <button data-testid="new-lead" onClick={() => setOpen(true)} className="inline-flex items-center gap-1.5 rounded-md bg-green-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-wa-mid">
             <Plus className="h-4 w-4" /> Add lead
@@ -186,28 +158,209 @@ export default function Leads() {
         </div>
       )}
 
-      {importOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-xl rounded-md border border-zinc-200 bg-white p-6">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="font-display text-lg font-semibold">Import leads</h3>
-              <button onClick={() => setImportOpen(false)}><X className="h-4 w-4" /></button>
-            </div>
-            <form onSubmit={doImport} className="space-y-3">
-              <p className="text-xs text-zinc-600">Upload a CSV or paste below. Required header: <span className="font-mono">phone</span>. Optional: <span className="font-mono">name, email, company</span>.</p>
-              <label className="block">
-                <span className="sr-only">Choose CSV file</span>
-                <input data-testid="csv-file" type="file" accept=".csv,text/csv" onChange={onFile} className="block w-full text-xs text-zinc-700 file:mr-3 file:rounded-md file:border file:border-zinc-300 file:bg-white file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-zinc-700 hover:file:bg-zinc-50" />
-              </label>
-              <textarea data-testid="csv-input" rows={10} value={csv} onChange={(e) => setCsv(e.target.value)} className="w-full rounded-md border border-zinc-300 px-3 py-2 font-mono text-xs" />
-              <div className="flex justify-end gap-2">
-                <button type="button" onClick={() => setImportOpen(false)} className="rounded-md border border-zinc-300 px-3 py-2 text-sm">Cancel</button>
-                <button data-testid="csv-submit" className="rounded-md bg-green-600 px-3 py-2 text-sm text-white">Import</button>
-              </div>
-            </form>
-          </div>
+      {importOpen && <ImportLeadsModal onClose={() => { setImportOpen(false); load(); }} />}
+    </div>
+  );
+}
+
+function ImportLeadsModal({ onClose }) {
+  const [tab, setTab] = useState('csv');
+  const [csv, setCsv] = useState('phone,name,email,company\n+919876543210,Aarav Mehta,aarav@acme.in,Acme');
+  const [url, setUrl] = useState('');
+  const [country, setCountry] = useState('+91');
+  const [scraping, setScraping] = useState(false);
+  const [scrapeResult, setScrapeResult] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const [selected, setSelected] = useState({});
+
+  const onFile = (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => setCsv(String(r.result || ''));
+    r.readAsText(f);
+  };
+
+  const doCsv = async (e) => {
+    e.preventDefault();
+    setImporting(true);
+    try {
+      const lines = csv.split(/\n/).map(s => s.trim()).filter(Boolean);
+      if (!lines.length) return;
+      const header = lines.shift().split(',').map(s => s.trim().toLowerCase());
+      const items = lines.map(l => {
+        const cols = l.split(',');
+        const obj = {};
+        header.forEach((h, i) => { obj[h] = (cols[i] || '').trim(); });
+        return obj;
+      });
+      const { data } = await import('../lib/api').then(m => m.default.post('/leads/import', { items }));
+      toast.success(`Imported ${data.inserted} new leads (${data.skipped} skipped)`);
+      onClose();
+    } catch (e) { toast.error(e?.response?.data?.detail || 'Import failed'); }
+    finally { setImporting(false); }
+  };
+
+  const doScrape = async () => {
+    if (!url.trim()) return;
+    setScraping(true);
+    setScrapeResult(null);
+    try {
+      const api = (await import('../lib/api')).default;
+      const { data } = await api.post('/leads/scrape-url', { url: url.trim(), country_code: country });
+      setScrapeResult(data);
+      const initial = {};
+      (data.rows || []).forEach(r => { initial[r.phone] = !r.duplicate; });
+      setSelected(initial);
+      if (!data.rows?.length) toast.message('No phone numbers found on that page');
+    } catch (e) { toast.error(e?.response?.data?.detail || 'Scrape failed'); }
+    finally { setScraping(false); }
+  };
+
+  const doScrapeImport = async () => {
+    if (!scrapeResult) return;
+    const items = scrapeResult.rows
+      .filter(r => selected[r.phone] && !r.duplicate)
+      .map(r => ({ phone: r.phone, source: 'web_scrape', name: scrapeResult.page_title || r.phone }));
+    if (!items.length) return toast.error('Select at least one number');
+    setImporting(true);
+    try {
+      const api = (await import('../lib/api')).default;
+      const { data } = await api.post('/leads/import', { items });
+      toast.success(`Imported ${data.inserted} numbers from web`);
+      onClose();
+    } catch (e) { toast.error(e?.response?.data?.detail || 'Import failed'); }
+    finally { setImporting(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-md border border-zinc-200 bg-white p-6">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="font-display text-lg font-semibold">Import leads</h3>
+          <button onClick={onClose}><X className="h-4 w-4" /></button>
         </div>
-      )}
+
+        <div className="mb-4 flex border-b border-zinc-200">
+          {[
+            { id: 'csv', label: 'CSV Upload', icon: Upload },
+            { id: 'url', label: 'From Web Page', icon: Globe },
+          ].map(t => (
+            <button
+              key={t.id}
+              type="button"
+              data-testid={`import-tab-${t.id}`}
+              onClick={() => setTab(t.id)}
+              className={`inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition ${
+                tab === t.id ? 'border-b-2 border-wa-dark text-wa-dark' : 'text-zinc-500 hover:text-zinc-800'
+              }`}
+            >
+              <t.icon className="h-3.5 w-3.5" /> {t.label}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'csv' && (
+          <form onSubmit={doCsv} className="space-y-3">
+            <p className="text-xs text-zinc-600">Upload a CSV or paste below. Required header: <span className="font-mono">phone</span>. Optional: <span className="font-mono">name, email, company</span>.</p>
+            <label className="block">
+              <input data-testid="csv-file" type="file" accept=".csv,text/csv" onChange={onFile} className="block w-full text-xs text-zinc-700 file:mr-3 file:rounded-md file:border file:border-zinc-300 file:bg-white file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-zinc-700 hover:file:bg-zinc-50" />
+            </label>
+            <textarea data-testid="csv-input" rows={8} value={csv} onChange={(e) => setCsv(e.target.value)} className="w-full rounded-md border border-zinc-300 px-3 py-2 font-mono text-xs" />
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={onClose} className="rounded-md border border-zinc-300 px-3 py-2 text-sm">Cancel</button>
+              <button data-testid="csv-submit" disabled={importing} className="rounded-md bg-green-600 px-3 py-2 text-sm text-white disabled:opacity-60">{importing ? 'Importing…' : 'Import'}</button>
+            </div>
+          </form>
+        )}
+
+        {tab === 'url' && (
+          <div className="space-y-3">
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+              <AlertTriangle className="mr-1 inline h-3 w-3" />
+              Use only on pages you own or with explicit consent. WhatsApp requires opt-in before messaging — you are responsible for compliance.
+            </div>
+            <p className="text-xs text-zinc-600">Paste a URL (e.g. your public contact page). We'll extract phone numbers + emails — you pick which to import.</p>
+            <div className="flex gap-2">
+              <select value={country} onChange={(e) => setCountry(e.target.value)} className="rounded-md border border-zinc-300 px-2 py-2 text-sm">
+                <option value="+91">🇮🇳 +91</option>
+                <option value="+1">🇺🇸 +1</option>
+                <option value="+44">🇬🇧 +44</option>
+                <option value="+971">🇦🇪 +971</option>
+                <option value="+65">🇸🇬 +65</option>
+              </select>
+              <input
+                data-testid="scrape-url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://yourbrand.com/contact"
+                className="flex-1 rounded-md border border-zinc-300 px-3 py-2 text-sm"
+              />
+              <button
+                data-testid="scrape-run"
+                type="button"
+                onClick={doScrape}
+                disabled={scraping || !url.trim()}
+                className="inline-flex items-center gap-1.5 rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60"
+              >
+                {scraping ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Globe className="h-3.5 w-3.5" />} Scan
+              </button>
+            </div>
+
+            {scrapeResult && (
+              <div className="space-y-2 rounded-md border border-zinc-200 bg-zinc-50 p-3">
+                <div className="flex items-center justify-between text-xs">
+                  <div>
+                    <div className="font-medium text-zinc-900">{scrapeResult.page_title || 'Web page'}</div>
+                    <div className="text-zinc-500">{scrapeResult.phones_found} phone numbers · {scrapeResult.duplicates} already in your CRM</div>
+                  </div>
+                  {scrapeResult.rows?.length > 0 && (
+                    <div className="flex gap-1 text-[10px]">
+                      <button type="button" onClick={() => { const next = {}; scrapeResult.rows.forEach(r => { next[r.phone] = !r.duplicate; }); setSelected(next); }} className="rounded border border-zinc-300 bg-white px-2 py-0.5">Select new</button>
+                      <button type="button" onClick={() => setSelected({})} className="rounded border border-zinc-300 bg-white px-2 py-0.5">Clear</button>
+                    </div>
+                  )}
+                </div>
+                {scrapeResult.rows?.length > 0 ? (
+                  <div className="max-h-56 space-y-1 overflow-y-auto rounded-md border border-zinc-200 bg-white p-2">
+                    {scrapeResult.rows.map(r => (
+                      <label key={r.phone} className={`flex items-center justify-between gap-2 rounded px-2 py-1 text-xs ${r.duplicate ? 'text-zinc-400' : 'hover:bg-zinc-50'}`}>
+                        <span className="inline-flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            disabled={r.duplicate}
+                            checked={!!selected[r.phone]}
+                            onChange={(e) => setSelected(s => ({ ...s, [r.phone]: e.target.checked }))}
+                            data-testid={`scrape-row-${r.phone}`}
+                          />
+                          <span className="font-mono">{r.phone}</span>
+                        </span>
+                        {r.duplicate && <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[9px] uppercase tracking-wider text-zinc-500">already imported</span>}
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center text-xs text-zinc-500">No phone numbers detected on this page.</div>
+                )}
+                {scrapeResult.emails_found?.length > 0 && (
+                  <div className="text-[11px] text-zinc-600"><b>Emails found:</b> {scrapeResult.emails_found.slice(0, 5).join(', ')}{scrapeResult.emails_found.length > 5 && '…'}</div>
+                )}
+                {scrapeResult.rows?.length > 0 && (
+                  <button
+                    data-testid="scrape-import"
+                    type="button"
+                    onClick={doScrapeImport}
+                    disabled={importing || Object.values(selected).filter(Boolean).length === 0}
+                    className="w-full rounded-md bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-wa-mid disabled:opacity-60"
+                  >
+                    {importing ? 'Importing…' : `Import ${Object.values(selected).filter(Boolean).length} selected → CRM`}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

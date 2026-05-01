@@ -203,6 +203,89 @@ async def import_leads(body: dict, current=Depends(get_current_user)):
     return {"inserted": inserted, "skipped": skipped}
 
 
+@router.post("/leads/scrape-url")
+async def scrape_url_for_leads(body: dict, current=Depends(get_current_user)):
+    """Polite public-page phone-number discovery.
+
+    Use when a merchant doesn't yet have a contact list. Fetches the given URL, extracts
+    E.164-looking phone numbers + nearby names (best-effort), and returns them as a preview.
+    Caller chooses which rows to import — NO numbers are added automatically.
+
+    Legal/compliance note: only use on your OWN pages or with consent. WhatsApp Business
+    Solution Terms prohibit messaging users who have not opted-in.
+    """
+    import re
+    import httpx
+    url = (body.get("url") or "").strip()
+    country_hint = (body.get("country_code") or "+91").strip()
+    if not (url.startswith("http://") or url.startswith("https://")):
+        raise HTTPException(400, "URL must start with http:// or https://")
+    # Polite single-page fetch with UA + 10s timeout
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=10) as client:
+            headers = {"User-Agent": "wabridge-lead-discoverer/1.0 (+https://wabridge.com/bot)"}
+            r = await client.get(url, headers=headers)
+            if r.status_code >= 400:
+                raise HTTPException(400, f"Remote returned HTTP {r.status_code}")
+            html = r.text
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(400, f"Could not fetch URL: {str(e)[:200]}")
+
+    # Strip scripts + style blocks, then pull text
+    text = re.sub(r"<script[\s\S]*?</script>|<style[\s\S]*?</style>", " ", html, flags=re.I)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+
+    # Extract phone numbers (Indian + international)
+    phone_patterns = [
+        r"\+?\d[\d\s\-().]{8,18}\d",   # loose generic
+    ]
+    found: set[str] = set()
+    for p in phone_patterns:
+        for m in re.finditer(p, text):
+            raw = re.sub(r"[\s\-().]", "", m.group(0))
+            if not raw:
+                continue
+            if raw.startswith("+"):
+                e164 = raw
+            elif raw.startswith("0"):
+                e164 = country_hint + raw.lstrip("0")
+            elif len(raw) == 10 and country_hint.startswith("+"):
+                e164 = country_hint + raw
+            else:
+                e164 = "+" + raw if not raw.startswith("+") else raw
+            # Validate length 10–15 digits after +
+            digits = re.sub(r"\D", "", e164)
+            if 10 <= len(digits) <= 15:
+                found.add("+" + digits)
+
+    # Email addresses as bonus info
+    emails = set(re.findall(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", text))
+
+    # Simple name guess — scrape <title>
+    title_match = re.search(r"<title[^>]*>([^<]{2,120})</title>", html, flags=re.I)
+    page_title = title_match.group(1).strip() if title_match else ""
+
+    # Mark duplicates (already present in tenant CRM)
+    existing_cur = db.leads.find(
+        {"tenant_id": current["tenant_id"], "phone": {"$in": list(found)}},
+        {"_id": 0, "phone": 1},
+    )
+    existing = {d["phone"] for d in await existing_cur.to_list(500)}
+    rows = [{"phone": p, "duplicate": p in existing, "source": "web_scrape"} for p in sorted(found)]
+    return {
+        "url": url,
+        "page_title": page_title,
+        "phones_found": len(found),
+        "duplicates": len(existing),
+        "rows": rows[:100],
+        "emails_found": sorted(list(emails))[:20],
+        "disclaimer": "WhatsApp requires opt-in consent before messaging. Only import numbers you have permission to contact.",
+    }
+
+
 # ============ Auto-reply rules ============
 @router.post("/auto-reply-rules")
 async def create_rule(payload: AutoReplyRuleIn, current=Depends(get_current_user)):

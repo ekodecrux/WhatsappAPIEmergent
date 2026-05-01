@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import api from '../lib/api';
-import { Mail, Lock, ArrowRight, Phone, Sparkles, AlertCircle } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Phone, Sparkles, AlertCircle, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 
 /**
@@ -22,6 +22,10 @@ export default function AuthForm({ purpose, onSuccess }) {
   const [fullName, setFullName] = useState('');
   const [company, setCompany] = useState('');
 
+  // MFA challenge state
+  const [mfaChallenge, setMfaChallenge] = useState(null); // { challenge_token, email }
+  const [mfaCode, setMfaCode] = useState('');
+
   const isSignup = purpose === 'signup';
 
   const submit = async (e) => {
@@ -35,6 +39,11 @@ export default function AuthForm({ purpose, onSuccess }) {
           onSuccess(data);
         } else {
           const { data } = await api.post('/auth/login', { email, password });
+          if (data?.mfa_required) {
+            setMfaChallenge({ challenge_token: data.challenge_token, email: data.email });
+            toast.message('Enter your 6-digit authenticator code');
+            return;
+          }
           toast.success('Welcome back');
           onSuccess(data);
         }
@@ -87,6 +96,61 @@ export default function AuthForm({ purpose, onSuccess }) {
   };
 
   const switchMode = (m) => { setMode(m); setStep('start'); setErr(''); setCode(''); };
+
+  const submitMfaChallenge = async (e) => {
+    e.preventDefault();
+    setErr(''); setBusy(true);
+    try {
+      const { data } = await api.post('/mfa/challenge', {
+        challenge_token: mfaChallenge.challenge_token,
+        code: mfaCode.trim(),
+      });
+      toast.success('Welcome back');
+      setMfaChallenge(null);
+      setMfaCode('');
+      onSuccess(data);
+    } catch (e) {
+      setErr(e?.response?.data?.detail || 'Invalid code');
+    } finally { setBusy(false); }
+  };
+
+  if (mfaChallenge) {
+    return (
+      <form onSubmit={submitMfaChallenge} className="space-y-4" data-testid="mfa-challenge-form">
+        <div className="rounded-md border border-green-200 bg-green-50 p-3 text-xs text-green-900">
+          <ShieldCheck className="mr-1 inline h-3 w-3" /> Two-factor required for <b>{mfaChallenge.email}</b>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-zinc-700">6-digit code from your authenticator app</label>
+          <input
+            data-testid="mfa-code-input"
+            autoFocus
+            value={mfaCode}
+            onChange={(e) => setMfaCode(e.target.value.replace(/[^\d-]/g, ''))}
+            placeholder="123456 or backup code (XXXX-XXXX)"
+            className="w-full rounded-md border border-zinc-300 px-3 py-2 font-mono tracking-[0.3em] text-center text-sm"
+            inputMode="numeric"
+          />
+        </div>
+        {err && <div className="flex items-center gap-1 text-xs text-red-600"><AlertCircle className="h-3 w-3" /> {err}</div>}
+        <button
+          type="submit"
+          data-testid="mfa-submit"
+          disabled={busy || mfaCode.length < 6}
+          className="inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-wa-mid disabled:opacity-60"
+        >
+          {busy ? 'Verifying…' : 'Verify & Sign in'} <ArrowRight className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => { setMfaChallenge(null); setMfaCode(''); setErr(''); }}
+          className="w-full text-center text-xs text-zinc-500 hover:text-zinc-800"
+        >
+          ← Back to login
+        </button>
+      </form>
+    );
+  }
 
   return (
     <form onSubmit={submit} className="space-y-4">
