@@ -5,7 +5,7 @@ import api from '../lib/api';
 import {
   Shield, Users, Building2, CreditCard, LifeBuoy, BarChart3, Search, RefreshCcw,
   TrendingUp, AlertTriangle, MessageSquare, Workflow, X, Save, Inbox, Banknote,
-  Wallet, Percent, Plus, Minus, Eye,
+  Wallet, Percent, Plus, Minus, Eye, Globe,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -16,6 +16,7 @@ const TABS = [
   { id: 'users', label: 'Users', icon: Users },
   { id: 'subscriptions', label: 'Subscriptions', icon: CreditCard },
   { id: 'pricing', label: 'Pricing & Discounts', icon: Banknote },
+  { id: 'domains', label: 'Custom Domains', icon: Globe },
   { id: 'tickets', label: 'Support Inbox', icon: LifeBuoy },
 ];
 
@@ -986,8 +987,139 @@ export default function AdminConsole() {
         {tab === 'users' && <UsersList />}
         {tab === 'subscriptions' && <Subscriptions />}
         {tab === 'pricing' && <PricingTab />}
+        {tab === 'domains' && <DomainsTab />}
         {tab === 'tickets' && <TicketInbox />}
       </div>
+    </div>
+  );
+}
+
+function DomainsTab() {
+  const [domains, setDomains] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('');
+  const [revoking, setRevoking] = useState(null);
+  const [reason, setReason] = useState('');
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get('/branding/admin/all');
+      setDomains(data || []);
+    } catch (e) { toast.error('Failed to load domains'); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { load(); }, []);
+
+  const revoke = async (d) => {
+    try {
+      await api.post(`/branding/admin/${d.id}/revoke`, { reason });
+      toast.success(`Revoked ${d.hostname}`);
+      setRevoking(null); setReason('');
+      load();
+    } catch (e) { toast.error(e?.response?.data?.detail || 'Revoke failed'); }
+  };
+
+  const filtered = domains.filter(d =>
+    !filter || d.hostname.toLowerCase().includes(filter.toLowerCase()) || (d.tenant_name || '').toLowerCase().includes(filter.toLowerCase())
+  );
+
+  return (
+    <div className="space-y-4" data-testid="admin-domains-tab">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="font-display text-xl font-semibold">All custom domains</h2>
+        <div className="flex items-center gap-2">
+          <input
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Search hostname or tenant…"
+            className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs"
+          />
+          <button onClick={load} className="rounded-md border border-zinc-300 bg-white p-1.5 hover:bg-zinc-50">
+            <RefreshCcw className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+
+      <div className="rounded-md border border-zinc-200 bg-white">
+        {loading ? (
+          <div className="p-8 text-center text-sm text-zinc-500">Loading…</div>
+        ) : filtered.length === 0 ? (
+          <div className="p-12 text-center text-sm text-zinc-500">No custom domains yet.</div>
+        ) : (
+          <table className="w-full text-xs">
+            <thead className="bg-zinc-50 text-left text-[10px] uppercase tracking-wider text-zinc-500">
+              <tr>
+                <th className="px-4 py-2.5">Hostname</th>
+                <th className="px-4 py-2.5">Tenant</th>
+                <th className="px-4 py-2.5">Plan</th>
+                <th className="px-4 py-2.5">Status</th>
+                <th className="px-4 py-2.5">Added</th>
+                <th className="px-4 py-2.5"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              {filtered.map(d => (
+                <tr key={d.id} data-testid={`admin-domain-${d.id}`}>
+                  <td className="px-4 py-2.5 font-mono">{d.hostname}</td>
+                  <td className="px-4 py-2.5">{d.tenant_name}</td>
+                  <td className="px-4 py-2.5">
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${PLAN_BADGE[d.tenant_plan] || PLAN_BADGE.free}`}>{d.tenant_plan}</span>
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                      d.status === 'verified' ? 'bg-green-100 text-green-800' :
+                      d.status === 'revoked' ? 'bg-red-100 text-red-800' :
+                      'bg-amber-100 text-amber-800'
+                    }`}>{d.status}</span>
+                  </td>
+                  <td className="px-4 py-2.5 text-zinc-600">{new Date(d.created_at).toLocaleDateString()}</td>
+                  <td className="px-4 py-2.5 text-right">
+                    {d.status !== 'revoked' && (
+                      <button
+                        data-testid={`revoke-${d.id}`}
+                        onClick={() => setRevoking(d)}
+                        className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-medium text-red-700 hover:bg-red-100"
+                      >
+                        <AlertTriangle className="h-3 w-3" /> Revoke
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {revoking && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setRevoking(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-md border border-zinc-200 bg-white p-5">
+            <h3 className="mb-2 font-display text-lg font-semibold">Revoke {revoking.hostname}?</h3>
+            <p className="mb-3 text-xs text-zinc-600">
+              Tenant <span className="font-medium">{revoking.tenant_name}</span> will lose white-label access on this domain. They'll see the revocation reason in their Branding panel.
+            </p>
+            <textarea
+              data-testid="revoke-reason"
+              rows={3}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Reason (e.g. 'unauthorized brand impersonation')"
+              className="mb-3 w-full rounded-md border border-zinc-300 px-3 py-2 text-xs"
+            />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setRevoking(null)} className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs">Cancel</button>
+              <button
+                data-testid="confirm-revoke"
+                onClick={() => revoke(revoking)}
+                className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
+              >
+                Revoke domain
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

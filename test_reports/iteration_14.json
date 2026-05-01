@@ -1,0 +1,48 @@
+{
+  "summary": "Iteration 14 – Custom Domain Mapping & Tenant Branding: tested backend (12 pytest cases) and frontend end-to-end. Backend: 11/12 PASS — GET/PATCH /api/branding, hex validation (400), empty-body (400), duplicate domain (409), malformed hostname (400), verify-unverified path returns expected_txt_record + expected_host, DELETE, public lookup unauthenticated (matched:false for unknown host + port/protocol stripping), super-admin 403-vs-200, super-admin revoke flow (revoke_reason persisted, status=revoked). One backend test FAILED due to a real product bug in /app/backend/routers/branding.py::add_domain — see critical issue below. Frontend: nav-branding visible in sidebar Build group; /app/branding renders Brand & Theme tab with brand-name/brand-color/brand-logo/brand-css inputs; save persists across reload (TEST_PW_Brand_v2 + #2563EB verified after reload); invalid hex shows backend 400 toast ('6-digit hex like #16A34A'); color-preset swatches render; Custom Domains tab (data-testid=tab-domains) renders; add-domain creates a row with TXT (_wabridge.<host> → wabridge-verify=<token>) + CNAME (messaging-vault.preview.emergentagent.com) instructions; verify-{id} hits DNS and returns unverified; delete-{id} removes row (Domain removed toast). Super Admin /app/admin Custom Domains tab (admin-tab-domains) renders admin-domains-tab table with hostname, tenant, plan (trial), status (pending), added date, and Revoke (revoke-{id}) button. BrandingContext correctly SKIPS /branding/public fetch on emergentagent.com preview hosts (observed 0 requests on Login page, per the host regex). No console errors other than the intentional 400 from the invalid-hex negative test.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/branding/domains",
+        "issue": "Hostname sanitizer uses `str.lstrip('https://').lstrip('http://')` which strips CHARS, not the prefix. Any hostname beginning with h, t, p, s, :, or / has those leading chars silently deleted. Reproduction: POST {\"hostname\": \"test-abc.example.com\"} returns a row with hostname='est-abc.example.com' (leading 't' stripped). Similarly 'chat.acme.com' becomes 'at.acme.com'. Fix: replace `.lstrip('https://').lstrip('http://')` with `.removeprefix('https://').removeprefix('http://')` (or a regex like re.sub(r'^https?://','',host)). Without this fix tenants cannot add legitimate subdomains that start with those chars and the saved hostname will never match the public lookup.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration14_branding.py",
+    "/app/test_reports/pytest/iter14_results.xml"
+  ],
+  "action_items": [
+    "FIX /app/backend/routers/branding.py line 92 `add_domain`: change `payload.hostname.strip().lower().lstrip('https://').lstrip('http://').rstrip('/')` to `payload.hostname.strip().lower().removeprefix('https://').removeprefix('http://').rstrip('/')`. Same bug pattern exists in `public_branding` (line 178) — also switch to `removeprefix`. After the fix, rerun `pytest backend/tests/test_iteration14_branding.py::TestDomains::test_add_verify_delete_domain_flow` which currently fails because of this bug.",
+    "(Optional polish) On /app/branding Brand & Theme save, also apply the primary_color / logo to the current session immediately by bumping BrandingContext — today the toast says 'refresh to see changes on custom domain' but the tenant portal doesn't re-render until the custom domain is used. Consider re-reading /api/branding into BrandingContext after PATCH."
+  ],
+  "critical_code_review_comments": [
+    "branding.py add_domain — lstrip('https://') is a latent critical bug (see above). Use str.removeprefix (Py 3.9+).",
+    "branding.py public_branding — same lstrip bug; plus it always does a DB query even for the platform's own host. Short-circuit when host matches REACT_APP_BACKEND_URL / WHITELABEL_CNAME_TARGET to save a round-trip.",
+    "branding.py verify_domain — 'except Exception as e' swallows dns.resolver.NXDOMAIN vs timeout vs NoAnswer into a single generic reason. NXDOMAIN is a terminal 'not set up' state that the UI can handle differently from 'timeout, try again'.",
+    "branding.py remove_domain — returns {'deleted': False} with HTTP 200 when the id doesn't exist; should be 404 for clearer UX.",
+    "branding.py — no index on tenant_domains(hostname,status) — the public lookup will scan as data grows. Add db.tenant_domains.create_index([('hostname',1),('status',1)]) in server.py lifespan.",
+    "Branding.jsx save() — toast says 'refresh to see changes on custom domain' but there is no in-app preview; consider calling the BrandingContext reload after save for current-session WYSIWYG.",
+    "Branding.jsx — custom_css is injected verbatim server-side but the UI doesn't warn users about CSS sandbox boundaries; a malicious value could include @import url(external) for tracking. Consider sanitizing at render with a safe allowlist (no @import, no url() with external origin)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration14_branding.py (new — 12 pytest cases covering all new iteration-14 endpoints)"
+  ],
+  "success_rate": {
+    "backend": "92% (11/12 — 1 genuine failure exposes a real product bug in add_domain hostname sanitizer)",
+    "frontend": "100% on all wired flows (nav-branding, /app/branding brand-save persistence, hex validation toast, color presets, tab-domains, add-domain TXT+CNAME instruction card, verify-{id}, delete-{id}, admin-tab-domains table with revoke-{id}; BrandingContext correctly skips /branding/public on emergentagent preview host)"
+  },
+  "test_credentials": "demo@test.com / demo1234 (tenant admin) + superadmin@wabridge.com / superadmin123 (super admin) — both verified on login",
+  "seed_data_creation": "Created/deleted several TEST_ + pw-* + revoke-* random-subdomain tenant_domains rows via pytest fixtures and UI flow; all cleaned up (1 orphan 'est-03f735a3.example.com' from the hostname-sanitizer bug was manually deleted via API). Tenant branding was PATCHed with TEST_PW_Brand_v2/#2563EB then reset to 'Demo Inc'/#16A34A.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Reusable pytest at /app/backend/tests/test_iteration14_branding.py (12 tests, ~2s). Frontend selectors confirmed: nav-branding, tab-brand, tab-domains, brand-name, brand-color, brand-logo, brand-css, brand-save, new-domain-input, add-domain, domain-{id}, verify-{id}, delete-{id}, admin-tab-domains, admin-domains-tab, admin-domain-{id}, revoke-{id}, revoke-reason, confirm-revoke. CNAME target defaults to messaging-vault.preview.emergentagent.com (from WHITELABEL_CNAME_TARGET env). The public-branding path cannot be fully end-to-end tested in preview because (a) DNS cannot be mocked for arbitrary test domains, (b) BrandingContext explicitly skips fetch on *.emergentagent.com hosts. Confirmed the BrandingContext code path loads without error and the emergent host skip works (0 /branding/public requests on Login page).",
+  "rca of the issue": "ONE critical bug: `payload.hostname.strip().lower().lstrip('https://').lstrip('http://').rstrip('/')` — Python's str.lstrip removes a SET of leading characters, not a prefix. So for any hostname whose first char is one of {h,t,p,s,:,/} the sanitizer silently chops leading chars until a non-set char appears. Example: 'test-abc.example.com' → 'est-abc.example.com'; 'chat.acme.com' → 'at.acme.com'; 'https.example.com' → 'example.com'. Fix: swap both `.lstrip(...)` calls to `.removeprefix(...)` (Python 3.9+). The same bug appears in branding.py::public_branding line 178 (public lookup) — so even if a tenant successfully adds a mangled hostname, the public lookup will also mangle the incoming Host header and matching is only accidentally preserved for the same malformed pair. Reproduction: see test_add_verify_delete_domain_flow — asserts doc['hostname'] == 'test-<uuid>.example.com' but gets 'est-<uuid>.example.com'. Mitigation: 1-line change in branding.py × 2 callsites."
+}

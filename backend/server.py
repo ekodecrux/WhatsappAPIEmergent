@@ -141,6 +141,7 @@ from routers import onboarding as r_onboarding  # noqa: E402
 from routers import catalog as r_catalog  # noqa: E402
 from routers import ai_assist as r_ai_assist  # noqa: E402
 from routers import sandbox as r_sandbox  # noqa: E402
+from routers import branding as r_branding  # noqa: E402
 
 api_router.include_router(r_auth.router)
 api_router.include_router(r_otp.router)
@@ -163,6 +164,7 @@ api_router.include_router(r_onboarding.router)
 api_router.include_router(r_catalog.router)
 api_router.include_router(r_ai_assist.router)
 api_router.include_router(r_sandbox.router)
+api_router.include_router(r_branding.router)
 
 app.include_router(api_router)
 

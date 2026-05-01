@@ -4,9 +4,10 @@ import {
   LayoutDashboard, MessageSquare, Send, Users, MessagesSquare, Bot,
   FileText, Workflow, BarChart3, CreditCard, Plug, UserPlus, BookOpen, Settings as SettingsIcon, LogOut,
   Menu, X, ChevronRight, AlertTriangle, Sparkles, Store, Activity, Shield, LifeBuoy, Wallet, Banknote,
-  Search, Package,
+  Search, Package, Palette,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useBranding } from '../contexts/BrandingContext';
 import AIAssistant from './AIAssistant';
 import CommandPalette from './CommandPalette';
 import api from '../lib/api';
@@ -29,6 +30,7 @@ const TENANT_NAV = [
   // Build
   { to: '/app/whatsapp', label: 'Channels', icon: MessageSquare, group: 'build' },
   { to: '/app/integrations', label: 'Developer', icon: Plug, group: 'build' },
+  { to: '/app/branding', label: 'Branding', icon: Palette, group: 'build' },
   { to: '/app/team', label: 'Team', icon: UserPlus, group: 'build' },
   // Account
   { to: '/app/wallet', label: 'Wallet', icon: Wallet, group: 'account' },
@@ -58,6 +60,7 @@ const TITLES = TENANT_NAV.reduce((m, n) => ({ ...m, [n.to]: n.label }), {});
 
 export default function AppShell() {
   const { user, logout, stopImpersonation } = useAuth();
+  const { branding } = useBranding();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -95,10 +98,16 @@ export default function AppShell() {
     <aside className="flex h-full w-64 flex-col border-r border-zinc-200 bg-white">
       <div className="flex h-14 items-center justify-between border-b border-zinc-200 px-4">
         <NavLink to={isSuper ? '/app/admin' : '/app'} className="flex items-center gap-2 text-sm font-semibold tracking-tight">
-          <span className={`grid h-7 w-7 place-items-center rounded-md text-white ${isSuper ? 'bg-purple-700' : 'bg-wa-dark'}`}>
-            {isSuper ? <Shield className="h-3.5 w-3.5" strokeWidth={2.5} /> : <MessageSquare className="h-3.5 w-3.5" strokeWidth={2.5} />}
-          </span>
-          <span className="font-display">{isSuper ? 'wabridge platform' : 'wabridge'}</span>
+          {!isSuper && branding?.logo_url ? (
+            <img src={branding.logo_url} alt={branding.brand_name || 'logo'} className="h-7 max-w-[140px] object-contain" data-testid="brand-logo-img" />
+          ) : (
+            <>
+              <span className={`grid h-7 w-7 place-items-center rounded-md text-white ${isSuper ? 'bg-purple-700' : 'bg-wa-dark'}`}>
+                {isSuper ? <Shield className="h-3.5 w-3.5" strokeWidth={2.5} /> : <MessageSquare className="h-3.5 w-3.5" strokeWidth={2.5} />}
+              </span>
+              <span className="font-display">{isSuper ? 'wabridge platform' : (branding?.brand_name || 'wabridge')}</span>
+            </>
+          )}
         </NavLink>
         <button data-testid="close-sidebar" className="text-zinc-500 lg:hidden" onClick={() => setMobileOpen(false)}>
           <X className="h-4 w-4" />
