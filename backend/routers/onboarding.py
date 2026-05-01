@@ -127,7 +127,7 @@ async def status(current=Depends(get_current_user)):
             "title": "Connect WhatsApp number",
             "description": "Paste your Meta Cloud or Twilio credentials — only you can do this part.",
             "done": creds > 0,
-            "href": "/app/whatsapp",
+            "href": "/app/connect-whatsapp",
             "cta": "Connect",
             "blocking": True,
             "duration": "3 min",

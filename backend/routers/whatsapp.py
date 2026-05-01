@@ -553,6 +553,126 @@ async def meta_webhook_inbound(request: Request):
     return {"ok": True}
 
 
+@router.post("/twilio/diagnose")
+async def twilio_diagnose(body: dict, current=Depends(get_current_user)):
+    """Inspect a saved Twilio credential against Twilio's API and return actionable diagnostics.
+
+    Returns:
+      - account_status: 'active' | 'closed' | 'error' | 'auth_failed'
+      - whatsapp_senders: list of approved senders Twilio sees on this account (with status + channel)
+      - configured_from: the From the user saved
+      - configured_from_matches: True if the saved From matches an approved sender
+      - sandbox_active: True if account is in trial/sandbox mode
+      - suggested_action: human-readable next step
+    """
+    cred_id = body.get("credential_id")
+    if not cred_id:
+        raise HTTPException(400, "credential_id required")
+    cred = await db.whatsapp_credentials.find_one(
+        {"id": cred_id, "tenant_id": current["tenant_id"], "provider": "twilio"},
+        {"_id": 0},
+    )
+    if not cred:
+        raise HTTPException(404, "Twilio credential not found")
+    sid = decrypt_text(cred["account_sid"])
+    tok = decrypt_text(cred["auth_token"])
+    saved_from_raw = (cred.get("from_address") or "").strip()
+    saved_from_clean = saved_from_raw.replace("whatsapp:", "").strip().replace(" ", "")
+    if saved_from_clean and not saved_from_clean.startswith("+"):
+        saved_from_clean = "+" + saved_from_clean.lstrip("0")
+
+    out: dict = {
+        "configured_from": saved_from_raw or None,
+        "configured_from_normalized": f"whatsapp:{saved_from_clean}" if saved_from_clean else None,
+        "account_status": "unknown",
+        "whatsapp_senders": [],
+        "configured_from_matches": False,
+        "sandbox_active": False,
+        "suggested_action": "",
+    }
+
+    # 1. Validate auth
+    try:
+        from twilio.rest import Client
+        c = Client(sid, tok)
+        acct = c.api.v2010.accounts(sid).fetch()
+        out["account_status"] = acct.status
+        out["sandbox_active"] = (acct.type or "").lower() == "trial"
+    except Exception as e:
+        msg = str(e).lower()
+        if "auth" in msg or "20003" in msg:
+            out["account_status"] = "auth_failed"
+            out["suggested_action"] = "Twilio rejected your Account SID + Auth Token. Re-paste them under Channel Setup → Twilio (no trailing spaces)."
+        else:
+            out["account_status"] = "error"
+            out["suggested_action"] = f"Could not contact Twilio: {str(e)[:150]}"
+        return out
+
+    # 2. List WhatsApp-enabled senders. Twilio exposes them via Messaging Senders + Incoming Phone Numbers.
+    try:
+        # First try Messaging Senders v2 (recommended for WhatsApp Business API)
+        senders_list: list[dict] = []
+        try:
+            senders_list += [
+                {"sender_id": s.sender_id, "phone": s.sender_id, "status": s.status, "channel": "whatsapp_v2"}
+                for s in c.messaging.v2.channels_senders.list(limit=50)
+                if "whatsapp" in (s.sender_id or "").lower()
+            ]
+        except Exception:
+            pass
+        # Fallback: list incoming phone numbers (these include sandbox & approved WA senders)
+        try:
+            for n in c.incoming_phone_numbers.list(limit=50):
+                caps = getattr(n, "capabilities", None) or {}
+                if isinstance(caps, dict) and (caps.get("voice") is False and caps.get("sms") is False):
+                    continue
+                senders_list.append({
+                    "phone": n.phone_number,
+                    "status": "approved",
+                    "channel": "voice_sms",  # info-only — these aren't WhatsApp unless approved separately
+                    "friendly_name": n.friendly_name,
+                })
+        except Exception:
+            pass
+
+        # The reliable way to discover WhatsApp senders: hit the 'Channels' API
+        # via Messaging API's senders endpoint. We list as best-effort.
+        out["whatsapp_senders"] = senders_list
+    except Exception as e:
+        out["whatsapp_senders_error"] = str(e)[:200]
+
+    # 3. Match check
+    if saved_from_clean:
+        match = any(
+            saved_from_clean in (s.get("phone") or s.get("sender_id") or "")
+            or saved_from_clean.lstrip("+") in (s.get("phone") or s.get("sender_id") or "")
+            for s in out["whatsapp_senders"]
+        )
+        out["configured_from_matches"] = match
+
+    # 4. Suggest the right next step
+    is_sandbox = saved_from_clean == "+14155238886"
+    if is_sandbox:
+        out["suggested_action"] = (
+            "You're using Twilio's shared WhatsApp sandbox (+14155238886). "
+            "Make sure your test recipient has texted 'join <your-keyword>' from THEIR WhatsApp to +14155238886. "
+            "Find the keyword at Twilio Console → Messaging → Try WhatsApp → 'Sandbox' tab. "
+            "Without that one-time opt-in, every send to that recipient will fail with 63007 / 'could not find a Channel'."
+        )
+    elif not out["configured_from_matches"]:
+        out["suggested_action"] = (
+            f"Twilio doesn't list '{saved_from_clean}' as a WhatsApp-enabled sender on your account. "
+            "Go to Twilio Console → Messaging → Senders → WhatsApp Senders to see your approved list. "
+            "If empty, request WhatsApp enablement first (production sender approval can take 1–5 days). "
+            "For instant testing, switch to the Twilio sandbox: From = +14155238886, then have your test phone "
+            "join the sandbox via the keyword shown in Twilio Console."
+        )
+    else:
+        out["suggested_action"] = "Looks good — your saved From matches an approved Twilio sender. If sends still fail, check recipient region permissions and template approval."
+
+    return out
+
+
 # ============ Sandbox info & test-send ============
 @router.get("/sandbox-info")
 async def sandbox_info(current=Depends(get_current_user)):
@@ -633,6 +753,16 @@ async def test_send(body: dict, current=Depends(get_current_user)):
                 "For WhatsApp, the FROM number must be your approved WhatsApp Business sender — "
                 "for the Twilio sandbox use +14155238886 (without the 'whatsapp:' prefix — we add it). "
                 "Verify under Channel Setup → Twilio → 'WhatsApp From'."
+            )
+        # 63007 / "could not find a Channel" — the From is not a WhatsApp sender on this account
+        elif "could not find a channel" in err or "63007" in err or "21606" in err:
+            hint = (
+                "Twilio doesn't recognize this From number as a WhatsApp sender on your account. "
+                "Two common causes: (1) you're using your regular Twilio voice/SMS number — only WhatsApp-approved "
+                "senders work. Go to Twilio Console → Messaging → Senders → WhatsApp Senders to see your approved list. "
+                "(2) You're trying to use the shared sandbox number +14155238886 — that only works AFTER your test "
+                "phone has texted 'join <keyword>' to it from WhatsApp (find your keyword at Messaging → Try WhatsApp). "
+                "Use the 'Diagnose' button below to see exactly which WhatsApp senders Twilio sees on your account."
             )
         # 21211 — invalid To
         elif "21211" in err or "is not a valid phone number" in err:

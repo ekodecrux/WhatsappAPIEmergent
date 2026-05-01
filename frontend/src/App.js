@@ -28,6 +28,7 @@ import Analytics from './pages/Analytics';
 import Billing from './pages/Billing';
 import Integrations from './pages/Integrations';
 import Settings from './pages/Settings';
+import ConnectWhatsApp from './pages/ConnectWhatsApp';
 import Branding from './pages/Branding';
 import Security from './pages/Security';
 import Team from './pages/Team';
@@ -54,6 +55,7 @@ export default function App() {
             <Route path="/app" element={<Private><AppShell /></Private>}>
               <Route index element={<Dashboard />} />
               <Route path="whatsapp" element={<WhatsAppSetup />} />
+            <Route path="connect-whatsapp" element={<ConnectWhatsApp />} />
               <Route path="campaigns" element={<Campaigns />} />
               <Route path="leads" element={<Leads />} />
               <Route path="chat" element={<Chat />} />

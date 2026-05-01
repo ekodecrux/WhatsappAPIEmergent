@@ -1,0 +1,49 @@
+{
+  "summary": "Iteration 16 — Hybrid LLM failover (Groq→Gemini) + new /app/connect-whatsapp 4-step wizard. Backend pytest 8 PASS + 1 SKIP (9 total, test_real_cred_returns_diagnose_shape skips because POST /api/whatsapp/credentials validates against Twilio live so a bogus cred can't be persisted in this env — the 404 and 400 paths of /api/whatsapp/twilio/diagnose are covered). Verified: spam-score returns score=100 label='danger' for 'FREE PRIZES NOW CLICK HERE !!!!', spam-score returns label='good' for neutral order-confirmation, spam-score 401 unauth, reply-coach returns {completion:str} for a real conversation_id and 404 for bogus conv, twilio/diagnose 404 for bogus cred_id and 400 for missing credential_id, /api/onboarding/status channel step href='/app/connect-whatsapp'. Frontend e2e: /app/connect-whatsapp renders Step 1 with mode-sandbox + mode-production cards; step1-next is disabled until a card is picked, enables after sandbox click, and advances to Step 2 on click; Step 2 pre-fills whatsapp_from='+14155238886', shows inline sandbox 'join keyword' instructions with sandbox_phone +14155238886, and toasts 'Fill all three fields' when save pressed with empty SID/token (stays on step 2); legacy /app/whatsapp renders cleanly with no console errors and shows the new data-testid='open-wizard' link with text 'Use guided wizard' and href='/app/connect-whatsapp'. Step 3/4 were not end-to-end-exercised in browser because /api/whatsapp/credentials validates live against Twilio (expected in test env) so the wizard can't advance past Step 2 without real creds — backend contract tests already cover /whatsapp/twilio/diagnose shape and the UI code correctly wires runTest→runDiagnose on failure (see /app/frontend/src/pages/ConnectWhatsApp.jsx L96-98).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/whatsapp/credentials",
+        "issue": "Returns 400 'Twilio credentials validation failed' when SID/token are rejected by Twilio — this is correct production behavior but makes the guided wizard un-completable in test environments without real Twilio creds. Consider adding a documented 'test/dev bypass' toggle (e.g. header or env flag) so CI/staging can exercise the full wizard Step 3 → Step 4 transition without hitting Twilio."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration16_wizard_llm.py",
+    "/app/test_reports/pytest/iter16_results.xml"
+  ],
+  "action_items": [
+    "(Polish / Dev-ex) Add a dev bypass to POST /api/whatsapp/credentials so the guided wizard can be demoed end-to-end without live Twilio creds — e.g. accept a feature flag 'ALLOW_UNVALIDATED_CREDENTIALS=true' in non-production envs, which stores creds without calling Twilio. Today wizard Step 2 is a hard stop in staging.",
+    "(Optional) Backend: emit a structured log line 'llm.failover provider=gemini reason=rate_limit' in helpers.py groq_chat and routers/ai_assist.py _gemini_failover — makes the failover observable in logs without needing a UI signal.",
+    "(Optional) Backend: /api/ai-assist/reply-coach currently uses model llama-3.1-8b-instant while spam-score uses llama-3.3-70b-versatile; failover still uses gemini-2.5-flash for both, which is fine, but document why reply-coach sticks with the smaller Groq model (latency) for the team."
+  ],
+  "critical_code_review_comments": [
+    "helpers.py groq_chat — failover triggers on ANY Groq exception (not just rate limits). That's a pragmatic choice but it masks real bugs (bad model name, bad system prompt). Recommend narrowing the catch to rate-limit/quota/auth by using _is_groq_rate_limit(err) as the switch, and re-raising non-rate-limit errors OR logging them at WARN level before falling through to Gemini.",
+    "helpers.py _gemini_chat_sync — builds a new ThreadPoolExecutor per call inside a running loop. OK for low-volume one-shots, but under spam-score widget polling (every keystroke) this adds ~1-2ms of overhead per request. Consider a module-level executor or migrate spam-score to pure-async (it's already async at the handler level, so the sync Groq call could just `await run_sync(...)` and the Gemini failover could be a native `await chat.send_message(...)` — already done in routers/ai_assist.py, so helpers.py groq_chat is only used by ai_suggest_reply / ai_analyze_sentiment now — consider deleting the sync path eventually).",
+    "routers/ai_assist.py spam-score — heuristic path runs BEFORE the LLM, so if Groq + Gemini both fail you still return a score from the heuristic (good resilience). BUT if both LLMs rate-limit, label can still be 'danger' based on heuristic alone — response is missing an explicit 'source' field so the UI can't tell 'score from LLM' vs 'score from heuristic'. Add `{source: 'llm' | 'heuristic'}` to the response for transparency.",
+    "routers/ai_assist.py reply-coach — on non-rate-limit Groq error returns {completion:'', error:'...'} with HTTP 200; caller can't distinguish from 'model chose to return empty'. Prefer HTTP 502 with a JSON body when the provider actually errors.",
+    "frontend ConnectWhatsApp.jsx Step 3 — runTest() calls runDiagnose() inline but does NOT await it; if the user clicks 'Send test' twice rapidly, two diagnose calls race. Minor — use a ref-based flag or cancel with AbortController.",
+    "frontend ConnectWhatsApp.jsx Step 4 — 'Advanced channel settings' button navigates to /app/whatsapp but doesn't pass the wizard-created credential. Users who complete the wizard then go to /app/whatsapp see the legacy list — consider highlighting the new cred (e.g. `/app/whatsapp?new=<cred_id>`).",
+    "frontend ConnectWhatsApp.jsx — testTo field defaults to '+91' which is India-specific; could be empty with a placeholder for better international UX (the placeholder already says +919876543210, so prefilling '+91' creates a subtle typing-continuation UX instead of full-replacement).",
+    "frontend WhatsAppSetup.jsx open-wizard — uses standard Link; good. No regression observed; existing TEST_iter10_cred_b13214 + multiple TEST_sandbox_* creds still list cleanly."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration16_wizard_llm.py (new — 9 pytest cases covering spam-score scoring + auth, reply-coach happy-path + 404, twilio/diagnose 404/400 shape, onboarding channel href)"
+  ],
+  "success_rate": {
+    "backend": "100% of executed tests (8 passed, 1 skipped due to Twilio live-validation requirement in wizard)",
+    "frontend": "100% of wizard Step 1-2 flows + WhatsAppSetup 'open-wizard' integration (Step 3-4 not live-exercised because /api/whatsapp/credentials requires real Twilio creds)"
+  },
+  "test_credentials": "demo@test.com / demo1234 (legacy admin). No MFA enrolled. superadmin@wabridge.com / superadmin123 available but not used.",
+  "seed_data_creation": "No persistent seed created. The one attempted TEST_diag_* throwaway Twilio credential was rejected by Twilio validation (expected) so nothing was written.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Reusable pytest at /app/backend/tests/test_iteration16_wizard_llm.py (~3s). To verify end-to-end Gemini failover, temporarily set GROQ_API_KEY='' in /app/backend/.env, restart backend, rerun TestSpamScore — label should still be 'danger' (failover path exercised). EMERGENT_LLM_KEY must remain set. Wizard Step 3-4 UI path is impossible to live-test without real Twilio creds because POST /api/whatsapp/credentials calls Twilio Accounts.fetch() synchronously before persisting; to exercise Step 3 ('Send test now' → auto-render diagnose panel on failure) in browser, either (a) use real sandbox SID/token from /app/backend/.env TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN, or (b) implement the dev bypass suggested in action_items. Frontend selectors verified: mode-sandbox, mode-production, step1-next, cred-sid, cred-token, cred-from, step2-save, step2-back, test-to, test-text, test-send-btn, step3-back, step3-skip, goto-campaigns, open-wizard.",
+  "rca of the issue": "No bugs found in scope. The only friction is environmental — /api/whatsapp/credentials enforces live Twilio validation which blocks the wizard in test envs. Recommend a dev-env bypass (see action_items) so CI can demo the full happy path."
+}

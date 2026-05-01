@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import api from '../lib/api';
 import {
   Plus, ShieldCheck, Phone, Trash2, Lock, X, Beaker, Server, AlertCircle, Send, Zap, Info, ExternalLink, MessageSquare,
-  Award, Check, Copy, ChevronDown, ChevronRight as ChevronRightIcon,
+  Award, Check, Copy, ChevronDown, ChevronRight as ChevronRightIcon, Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import ShareLinksPanel from '../components/ShareLinksPanel';
@@ -104,6 +105,20 @@ export default function WhatsAppSetup() {
     } finally { setTestBusy(false); }
   };
 
+  const [diagBusy, setDiagBusy] = useState(false);
+  const [diag, setDiag] = useState(null);
+  const runDiagnose = async () => {
+    if (!testModal?.cred) return;
+    setDiagBusy(true);
+    setDiag(null);
+    try {
+      const { data } = await api.post('/whatsapp/twilio/diagnose', { credential_id: testModal.cred.id });
+      setDiag(data);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Diagnose failed');
+    } finally { setDiagBusy(false); }
+  };
+
   return (
     <div className="mx-auto max-w-7xl space-y-6 p-6">
       <div className="flex flex-col items-start justify-between gap-3 md:flex-row md:items-center">
@@ -111,13 +126,22 @@ export default function WhatsAppSetup() {
           <h1 className="font-display text-3xl font-semibold tracking-tight">WhatsApp Setup</h1>
           <p className="mt-1 text-sm text-zinc-600">Connect your WhatsApp Business credentials. Stored encrypted.</p>
         </div>
-        <button
-          data-testid="add-credential-btn"
-          onClick={() => setOpen(true)}
-          className="inline-flex items-center gap-1.5 rounded-md bg-green-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-wa-mid"
-        >
-          <Plus className="h-4 w-4" /> Connect account
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/app/connect-whatsapp"
+            data-testid="open-wizard"
+            className="inline-flex items-center gap-1.5 rounded-md border border-emerald-300 bg-emerald-50 px-3.5 py-2 text-sm font-medium text-emerald-900 hover:bg-emerald-100"
+          >
+            <Sparkles className="h-4 w-4" /> Use guided wizard
+          </Link>
+          <button
+            data-testid="add-credential-btn"
+            onClick={() => setOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-md bg-green-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-wa-mid"
+          >
+            <Plus className="h-4 w-4" /> Connect account
+          </button>
+        </div>
       </div>
 
       {/* Encryption notice */}
@@ -365,6 +389,36 @@ export default function WhatsAppSetup() {
                     {testResult.hint && (
                       <div className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-amber-900">
                         <strong>How to fix:</strong> {testResult.hint}
+                      </div>
+                    )}
+                    {testModal?.cred?.provider === 'twilio' && (
+                      <div className="mt-2">
+                        <button
+                          data-testid="diagnose-twilio"
+                          onClick={runDiagnose}
+                          disabled={diagBusy}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-zinc-300 bg-white px-2.5 py-1.5 text-[11px] font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-60"
+                        >
+                          {diagBusy ? 'Inspecting Twilio…' : '🩺 Diagnose Twilio account'}
+                        </button>
+                      </div>
+                    )}
+                    {diag && (
+                      <div className="mt-2 space-y-1.5 rounded border border-zinc-300 bg-white p-3 text-[11px] text-zinc-800">
+                        <div><b>Account status:</b> <span className={diag.account_status === 'active' ? 'text-green-700' : 'text-red-700'}>{diag.account_status}</span>{diag.sandbox_active && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-semibold text-amber-800">SANDBOX / TRIAL</span>}</div>
+                        <div><b>Saved From:</b> <code className="font-mono">{diag.configured_from || '—'}</code></div>
+                        <div><b>Match found in your senders?</b> {diag.configured_from_matches ? <span className="text-green-700">✓ yes</span> : <span className="text-red-700">✗ no</span>}</div>
+                        {diag.whatsapp_senders?.length > 0 && (
+                          <div>
+                            <b>Senders Twilio sees on your account:</b>
+                            <ul className="ml-4 mt-1 list-disc text-zinc-700">
+                              {diag.whatsapp_senders.slice(0, 8).map((s, i) => (
+                                <li key={i}><code className="font-mono">{s.phone || s.sender_id}</code> · {s.channel} · {s.status}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        <div className="mt-1.5 rounded bg-amber-50 p-2 text-amber-900"><b>Next step:</b> {diag.suggested_action}</div>
                       </div>
                     )}
                   </>

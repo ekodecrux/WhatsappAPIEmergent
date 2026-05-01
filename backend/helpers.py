@@ -4,6 +4,7 @@ import asyncio
 import base64
 import hashlib
 import hmac
+import logging
 import secrets
 import smtplib
 from datetime import datetime, timedelta, timezone
@@ -366,12 +367,60 @@ def verify_meta_webhook_signature(raw_body: bytes, signature_header: str | None)
     return hmac.compare_digest(digest, expected)
 
 
-# ================ Groq AI ================
+# ================ Hybrid LLM (Groq → Gemini failover) ================
+def _gemini_chat_sync(system: str, user_msg: str, max_tokens: int = 200) -> str:
+    """Sync wrapper around emergentintegrations Gemini Flash. Used as failover when Groq rate-limits."""
+    import asyncio
+    from emergentintegrations.llm.chat import LlmChat, UserMessage  # type: ignore
+    api_key = os.environ.get("EMERGENT_LLM_KEY")
+    if not api_key:
+        raise RuntimeError("EMERGENT_LLM_KEY not configured")
+
+    async def _run() -> str:
+        # Unique session-id per call — these helpers are stateless one-shots
+        chat = (
+            LlmChat(api_key=api_key, session_id=f"oneshot-{secrets.token_hex(4)}", system_message=system)
+            .with_model("gemini", "gemini-2.5-flash")
+        )
+        return await chat.send_message(UserMessage(text=user_msg)) or ""
+
+    try:
+        # Caller is sync; use a dedicated loop so we don't block existing event loops.
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # We're inside an async context — schedule via a new loop in a thread
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    return pool.submit(asyncio.run, _run()).result(timeout=30)
+        except RuntimeError:
+            pass
+        return asyncio.run(_run())
+    except Exception as e:
+        return f"[AI unavailable: {e}]"
+
+
+def _is_groq_rate_limit(err: Exception) -> bool:
+    """Detect the specific Groq 429 rate-limit / quota error so we can failover quickly."""
+    s = str(err).lower()
+    return any(t in s for t in ("rate limit", "429", "quota", "tokens per minute", "tpm", "rpm"))
+
+
+# ================ Groq AI (with Gemini failover) ================
 def groq_chat(system: str, user_msg: str, max_tokens: int = 200) -> str:
-    """Call Groq for completion, fallback if not available."""
+    """Call Groq for completion. On Groq rate-limit / outage, transparently fail over to Gemini Flash.
+
+    Why this exists: Groq's free tier caps at ~30 req/min — easy to hit during bulk campaigns,
+    spam-score widget polling, and reply-coach autocomplete. Gemini Flash (via Emergent universal
+    key) has 15 req/sec headroom; users see zero downtime.
+    """
+    # Try Groq first (cheaper, faster when not rate-limited)
     try:
         from groq import Groq
-        client = Groq(api_key=os.environ["GROQ_API_KEY"])
+        api_key = os.environ.get("GROQ_API_KEY")
+        if not api_key:
+            raise RuntimeError("GROQ_API_KEY not configured")
+        client = Groq(api_key=api_key)
         resp = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
@@ -383,6 +432,13 @@ def groq_chat(system: str, user_msg: str, max_tokens: int = 200) -> str:
         )
         return resp.choices[0].message.content or ""
     except Exception as e:
+        # Always try Gemini failover — if Groq isn't installed/keyed, we still serve users.
+        gemini_result = _gemini_chat_sync(system, user_msg, max_tokens=max_tokens)
+        if gemini_result and not gemini_result.startswith("[AI unavailable"):
+            # Optional dev signal
+            if _is_groq_rate_limit(e):
+                logging.getLogger("wabridge.llm").info("Groq rate-limit — failed over to Gemini Flash")
+            return gemini_result
         return f"[AI unavailable: {e}]"
 
 

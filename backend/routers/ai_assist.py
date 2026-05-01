@@ -29,6 +29,26 @@ def _groq_client():
     return Groq(api_key=key)
 
 
+def _is_rate_limit(err: Exception) -> bool:
+    s = str(err).lower()
+    return any(t in s for t in ("rate limit", "429", "quota", "tokens per minute", "tpm", "rpm"))
+
+
+async def _gemini_failover(system: str, user_msg: str, max_tokens: int = 200, json_mode: bool = False) -> str:
+    """Async Gemini Flash call via emergentintegrations as Groq failover."""
+    from emergentintegrations.llm.chat import LlmChat, UserMessage  # type: ignore
+    api_key = os.environ.get("EMERGENT_LLM_KEY")
+    if not api_key:
+        raise HTTPException(500, "EMERGENT_LLM_KEY missing in environment")
+    sys = system + ("\n\nReturn ONLY a valid JSON object — no prose, no markdown fences." if json_mode else "")
+    import secrets as _s
+    chat = (
+        LlmChat(api_key=api_key, session_id=f"oneshot-{_s.token_hex(4)}", system_message=sys)
+        .with_model("gemini", "gemini-2.5-flash")
+    )
+    return (await chat.send_message(UserMessage(text=user_msg))) or ""
+
+
 # ============ Spam score ============
 class SpamCheckIn(BaseModel):
     body: str = Field(min_length=1, max_length=4096)
@@ -69,32 +89,49 @@ async def spam_score(payload: SpamCheckIn, current=Depends(get_current_user)):
     # LLM polish for an actionable rewrite
     rewrite = None
     label = "good"
+    prompt_user = (
+        f"Category: {payload.category}\nMessage:\n{payload.body}\n\n"
+        "Rate the message on a 0-100 spam-score scale (0=natural, 100=Meta will block). "
+        "Suggest one rewrite that's compliant + conversion-friendly."
+    )
+    prompt_sys = (
+        "You are a WhatsApp marketing reviewer. Reply ONLY in compact JSON: "
+        '{"score": int, "issues": [str], "rewrite": str}.'
+    )
+    raw_json = None
     try:
         client = _groq_client()
-        prompt = (
-            "You are a WhatsApp marketing reviewer. Rate the message on a 0-100 spam-score scale "
-            "(0 = perfectly natural conversation; 100 = guaranteed Meta block). Then suggest one "
-            "rewrite that's compliant + conversion-friendly. Reply ONLY in compact JSON: "
-            '{"score": int, "issues": [str], "rewrite": str}.\n\nCategory: '
-            f"{payload.category}\nMessage:\n{payload.body}"
-        )
         resp = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}],
+            messages=[
+                {"role": "system", "content": prompt_sys},
+                {"role": "user", "content": prompt_user},
+            ],
             temperature=0.2,
             max_tokens=400,
             response_format={"type": "json_object"},
         )
-        parsed = json.loads(resp.choices[0].message.content)
-        llm_score = int(parsed.get("score", base_score))
-        for i in parsed.get("issues", []) or []:
-            if i and i not in issues:
-                issues.append(i)
-        rewrite = parsed.get("rewrite")
-        # Blend: take max so we don't underweight either signal
-        final = max(base_score, llm_score)
-    except Exception:
-        final = base_score
+        raw_json = resp.choices[0].message.content
+    except Exception as groq_err:
+        if _is_rate_limit(groq_err):
+            try:
+                raw_json = await _gemini_failover(prompt_sys, prompt_user, max_tokens=400, json_mode=True)
+                # Strip code fences if Gemini wrapped output
+                raw_json = re.sub(r"^```(?:json)?|```$", "", raw_json or "", flags=re.M).strip()
+            except Exception:
+                raw_json = None
+    final = base_score
+    if raw_json:
+        try:
+            parsed = json.loads(raw_json)
+            llm_score = int(parsed.get("score", base_score))
+            for i in parsed.get("issues", []) or []:
+                if i and i not in issues:
+                    issues.append(i)
+            rewrite = parsed.get("rewrite")
+            final = max(base_score, llm_score)
+        except Exception:
+            pass
 
     if final >= 70:
         label = "danger"
@@ -189,28 +226,38 @@ async def reply_coach(payload: ReplyCoachIn, current=Depends(get_current_user)):
         for m in msgs
     )
 
+    sys_prompt = (
+        "You are an autocomplete assistant for a customer-support agent on WhatsApp. "
+        "Given the conversation and the agent's partial reply (draft), return the "
+        "MOST LIKELY 5–60 character continuation. Match agent tone, be concise, no greeting "
+        "if the agent already started. Return ONLY the continuation text, no quotes, no JSON."
+    )
+    user_prompt = f"Conversation:\n{history}\n\nAgent's draft so far: \"{payload.draft}\"\n\nContinuation:"
+    completion = ""
     try:
         client = _groq_client()
-        prompt = (
-            "You are an autocomplete assistant for a customer-support agent on WhatsApp. "
-            "Given the conversation and the agent's partial reply (draft), return the "
-            "MOST LIKELY 5–60 character continuation. Match agent tone, be concise, no greeting "
-            "if the agent already started. Return ONLY the continuation text, no quotes, no JSON.\n\n"
-            f"Conversation:\n{history}\n\nAgent's draft so far: \"{payload.draft}\"\n\nContinuation:"
-        )
         resp = client.chat.completions.create(
             model="llama-3.1-8b-instant",
-            messages=[{"role": "user", "content": prompt}],
+            messages=[
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
             temperature=0.4,
             max_tokens=60,
         )
         completion = (resp.choices[0].message.content or "").strip().strip('"').strip("'")
-        # Don't echo the draft
-        if payload.draft and completion.lower().startswith(payload.draft.lower()):
-            completion = completion[len(payload.draft):]
-        # Cap at 80 chars
-        completion = completion[:80]
-    except Exception as e:
-        return {"completion": "", "error": str(e)[:200]}
+    except Exception as groq_err:
+        if _is_rate_limit(groq_err):
+            try:
+                completion = (await _gemini_failover(sys_prompt, user_prompt, max_tokens=60)).strip().strip('"').strip("'")
+            except Exception as e:
+                return {"completion": "", "error": str(e)[:200]}
+        else:
+            return {"completion": "", "error": str(groq_err)[:200]}
+    # Don't echo the draft
+    if payload.draft and completion.lower().startswith(payload.draft.lower()):
+        completion = completion[len(payload.draft):]
+    # Cap at 80 chars
+    completion = completion[:80]
 
     return {"completion": completion}
