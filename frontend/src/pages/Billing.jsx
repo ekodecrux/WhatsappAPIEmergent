@@ -19,6 +19,7 @@ export default function Billing() {
   const [sub, setSub] = useState(null);
   const [orders, setOrders] = useState([]);
   const [busy, setBusy] = useState(null);
+  const [cycle, setCycle] = useState('monthly');
 
   const load = async () => {
     const [p, s, o] = await Promise.all([
@@ -35,7 +36,7 @@ export default function Billing() {
     try {
       const ok = await loadRazorpayScript();
       if (!ok) { toast.error('Could not load Razorpay'); setBusy(null); return; }
-      const { data } = await api.post('/billing/orders', { plan: planId });
+      const { data } = await api.post('/billing/orders', { plan: planId, billing_cycle: cycle });
       const opts = {
         key: data.key_id,
         amount: data.amount,
@@ -93,19 +94,38 @@ export default function Billing() {
       </div>
 
       {/* Plans */}
+      <div className="flex justify-center">
+        <div className="inline-flex rounded-md border border-zinc-200 bg-white p-1" data-testid="billing-cycle-toggle">
+          <button
+            onClick={() => setCycle('monthly')}
+            className={`rounded px-4 py-1.5 text-xs font-medium transition ${cycle === 'monthly' ? 'bg-wa-dark text-white' : 'text-zinc-600 hover:bg-zinc-50'}`}
+          >Monthly</button>
+          <button
+            onClick={() => setCycle('annual')}
+            data-testid="cycle-annual"
+            className={`rounded px-4 py-1.5 text-xs font-medium transition ${cycle === 'annual' ? 'bg-wa-dark text-white' : 'text-zinc-600 hover:bg-zinc-50'}`}
+          >Annual <span className="ml-1 rounded bg-green-100 px-1 py-0.5 text-[9px] text-green-800">2 mo free</span></button>
+        </div>
+      </div>
+
       <div className="grid gap-4 lg:grid-cols-3">
         {plans.map((p) => {
           const isHighlight = p.id === 'pro';
           const isCurrent = sub?.plan === p.id || (p.id === 'free' && sub?.plan === 'trial');
           const isFree = p.id === 'free';
+          const showPrice = cycle === 'annual' && p.annual_inr ? p.annual_inr : p.price_inr;
+          const cycleLabel = isFree ? '' : cycle === 'annual' ? '/year' : '/month';
           return (
             <div key={p.id} className={`relative rounded-md border p-6 ${isHighlight ? 'border-green-700 bg-zinc-950 text-zinc-100' : 'border-zinc-200 bg-white'}`}>
               {isHighlight && <span className="absolute -top-3 left-6 rounded-full bg-green-700 px-3 py-1 text-xs font-medium uppercase tracking-wider text-white">Most popular</span>}
               <div className={`text-xs font-semibold uppercase tracking-[0.2em] ${isHighlight ? 'text-green-400' : 'text-wa-dark'}`}>{p.name}</div>
               <div className="mt-2 flex items-baseline gap-1">
-                <span className="font-display text-3xl font-semibold tracking-tight">₹{p.price_inr}</span>
-                <span className={isHighlight ? 'text-zinc-400' : 'text-zinc-500'}>{isFree ? '' : '/month'}</span>
+                <span className="font-display text-3xl font-semibold tracking-tight">₹{showPrice}</span>
+                <span className={isHighlight ? 'text-zinc-400' : 'text-zinc-500'}>{cycleLabel}</span>
               </div>
+              {cycle === 'annual' && !isFree && p.annual_inr && (
+                <div className={`text-[11px] ${isHighlight ? 'text-green-400' : 'text-green-700'}`}>Save ₹{(p.price_inr * 12 - p.annual_inr).toLocaleString()} vs monthly</div>
+              )}
               <ul className="mt-6 space-y-2 text-sm">
                 <li className="flex items-start gap-2"><Check className={`mt-0.5 h-4 w-4 ${isHighlight ? 'text-green-400' : 'text-wa-dark'}`} />{p.messages.toLocaleString()} messages {isFree ? '' : '/ mo'}</li>
                 <li className="flex items-start gap-2"><Check className={`mt-0.5 h-4 w-4 ${isHighlight ? 'text-green-400' : 'text-wa-dark'}`} />{p.leads.toLocaleString()} leads</li>

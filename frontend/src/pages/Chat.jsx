@@ -19,6 +19,8 @@ export default function Chat() {
   const [slashFilter, setSlashFilter] = useState('');
   const [showQRModal, setShowQRModal] = useState(false);
   const [qrForm, setQrForm] = useState({ shortcut: '', body: '' });
+  const [ghost, setGhost] = useState('');  // ghost-text autocomplete suggestion
+  const ghostTimer = React.useRef(null);
   const endRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -251,18 +253,31 @@ export default function Chat() {
             </div>
             <div className="border-t border-zinc-200 p-3">
               <div className="flex items-center gap-2">
-                <input
-                  ref={inputRef}
-                  data-testid="chat-input"
-                  value={input}
-                  onChange={onInputChange}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !showSlash) send();
-                    if (e.key === 'Escape') setShowSlash(false);
-                  }}
-                  placeholder="Reply… (type / for snippets)"
-                  className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-wa-light"
-                />
+                <div className="relative flex-1">
+                  <input
+                    ref={inputRef}
+                    data-testid="chat-input"
+                    value={input}
+                    onChange={onInputChange}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Tab' && ghost) { e.preventDefault(); acceptGhost(); return; }
+                      if (e.key === 'Enter' && !showSlash) send();
+                      if (e.key === 'Escape') { setShowSlash(false); setGhost(''); }
+                    }}
+                    placeholder="Reply… (type / for snippets · Tab to accept AI suggestion)"
+                    className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-wa-light"
+                  />
+                  {ghost && (
+                    <span
+                      data-testid="ghost-text"
+                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 truncate text-sm text-zinc-400"
+                      style={{ paddingLeft: `${input.length * 7.2}px`, maxWidth: 'calc(100% - 24px)' }}
+                    >
+                      {ghost}
+                      <kbd className="ml-2 rounded border border-zinc-300 bg-zinc-50 px-1 py-0.5 font-mono text-[9px] text-zinc-600">Tab</kbd>
+                    </span>
+                  )}
+                </div>
                 <button data-testid="chat-send" onClick={send} className="inline-flex items-center gap-1.5 rounded-md bg-green-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-wa-mid">
                   <Send className="h-3.5 w-3.5" /> Send
                 </button>

@@ -126,9 +126,9 @@ async def audit_log(tenant_id: str, user_id: str, action: str, resource: str = "
 #   pro     — ₹999 / mo
 # Legacy slugs (trial/basic/enterprise) are aliased below for back-compat with existing tenants.
 PLANS = {
-    "free": {"name": "Free", "price_inr": 0, "messages": 100, "leads": 100, "credentials": 1, "duration_days": 365},
-    "starter": {"name": "Starter", "price_inr": 499, "messages": 5000, "leads": 1000, "credentials": 1, "duration_days": 30},
-    "pro": {"name": "Pro", "price_inr": 999, "messages": 25000, "leads": 10000, "credentials": 3, "duration_days": 30},
+    "free": {"name": "Free", "price_inr": 0, "annual_inr": 0, "messages": 100, "leads": 100, "credentials": 1, "duration_days": 365},
+    "starter": {"name": "Starter", "price_inr": 499, "annual_inr": 4990, "messages": 5000, "leads": 1000, "credentials": 1, "duration_days": 30},
+    "pro": {"name": "Pro", "price_inr": 999, "annual_inr": 9990, "messages": 25000, "leads": 10000, "credentials": 3, "duration_days": 30},
 }
 
 # Legacy slug → new slug (so older tenants & docs keep working)

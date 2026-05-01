@@ -217,7 +217,8 @@ class AutoReplyRuleIn(BaseModel):
 
 # ===== Billing =====
 class CheckoutOrderIn(BaseModel):
-    plan: str  # basic | pro | enterprise
+    plan: str  # starter | pro
+    billing_cycle: str | None = "monthly"  # monthly | annual
 
 
 class VerifyPaymentIn(BaseModel):

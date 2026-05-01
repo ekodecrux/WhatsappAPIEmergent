@@ -39,9 +39,16 @@ async def create_order(payload: CheckoutOrderIn, current=Depends(get_current_use
     if target not in PLANS or target == "free":
         raise HTTPException(400, "Invalid plan — use 'starter' or 'pro'")
     plan = PLANS[target]
-    receipt = f"{current['tenant_id'][:8]}-{int(now().timestamp())}"
-    res = create_razorpay_order(plan["price_inr"], receipt, notes={
-        "tenant_id": current["tenant_id"], "plan": target,
+    cycle = (payload.billing_cycle or "monthly").lower()
+    if cycle == "annual":
+        amount = float(plan.get("annual_inr") or plan["price_inr"] * 10)
+        days = 365
+    else:
+        amount = float(plan["price_inr"])
+        days = plan.get("duration_days", 30)
+    receipt = f"sub_{uid()[:10]}"
+    res = create_razorpay_order(amount, receipt, notes={
+        "tenant_id": current["tenant_id"], "plan": target, "billing_cycle": cycle,
     })
     if not res.get("success"):
         raise HTTPException(500, f"Razorpay error: {res.get('error')}")
@@ -51,7 +58,9 @@ async def create_order(payload: CheckoutOrderIn, current=Depends(get_current_use
         "tenant_id": current["tenant_id"],
         "user_id": current["id"],
         "plan": target,
-        "amount_inr": plan["price_inr"],
+        "billing_cycle": cycle,
+        "duration_days": days,
+        "amount_inr": amount,
         "razorpay_order_id": order["id"],
         "status": "created",
         "created_at": now().isoformat(),
@@ -62,6 +71,7 @@ async def create_order(payload: CheckoutOrderIn, current=Depends(get_current_use
         "currency": order["currency"],
         "key_id": res["key_id"],
         "plan": target,
+        "billing_cycle": cycle,
     }
 
 
@@ -76,8 +86,9 @@ async def verify_payment(payload: VerifyPaymentIn, current=Depends(get_current_u
     plan = PLANS.get(target)
     if not plan:
         raise HTTPException(400, "Invalid plan")
-
-    end_at = now() + timedelta(days=plan["duration_days"])
+    order = await db.payment_orders.find_one({"razorpay_order_id": payload.razorpay_order_id}, {"_id": 0})
+    days = (order or {}).get("duration_days") or plan.get("duration_days", 30)
+    end_at = now() + timedelta(days=days)
     await db.tenants.update_one(
         {"id": current["tenant_id"]},
         {"$set": {

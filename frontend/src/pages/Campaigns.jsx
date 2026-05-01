@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import api from '../lib/api';
 import { Send, Plus, Play, Pause, X, CheckCircle2, Clock, AlertCircle, RotateCw, Image as ImageIcon, Beaker, Trash2, Zap, FileText, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
+import { SpamScoreWidget, OptimalTimeHint } from '../components/SpamScoreWidget';
 
 const STATUS_STYLE = {
   pending_approval: 'bg-amber-100 text-amber-800',
@@ -247,6 +248,7 @@ export default function Campaigns() {
               <button onClick={() => setOpen(false)} className="text-zinc-500 hover:text-zinc-900"><X className="h-4 w-4" /></button>
             </div>
             <form onSubmit={submit} className="space-y-3">
+              <OptimalTimeHint />
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-xs font-medium text-zinc-700">Name</label>
@@ -291,6 +293,7 @@ export default function Campaigns() {
                   </div>
                 </div>
                 <textarea data-testid="campaign-message" required={form.variants.length === 0} rows={4} value={form.message} onChange={(e) => { setForm({ ...form, message: e.target.value }); setPickedTemplateId(''); }} className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" placeholder="Hi {{name}}, ..." />
+                <SpamScoreWidget body={form.message} onApplyRewrite={(text) => setForm(f => ({ ...f, message: text }))} />
                 <div className="mt-1 flex items-center justify-between text-[10px] text-zinc-500">
                   <span>
                     Use <code className="rounded bg-zinc-100 px-1">{'{{name}}'}</code>, <code className="rounded bg-zinc-100 px-1">{'{{phone}}'}</code> for personalization.
