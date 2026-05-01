@@ -617,14 +617,40 @@ async def test_send(body: dict, current=Depends(get_current_user)):
         "error": None if result.get("success") else result.get("error"),
     })
     if not result.get("success"):
-        # Map Twilio's "not opted in" to a clearer message
         err = (result.get("error") or "").lower()
         hint = None
+        # Recipient hasn't opted into Twilio sandbox
         if "63007" in err or "not opt" in err or "63015" in err or "63016" in err or "63018" in err:
             hint = (
                 "Recipient has not joined the Twilio sandbox. From the recipient's WhatsApp, "
                 "send 'join <your-keyword>' to +14155238886. Find your keyword in the Twilio "
                 "Console → Messaging → Try WhatsApp."
+            )
+        # SMS-vs-WhatsApp channel mismatch (most common error after sandbox issues)
+        elif "invalid from and to" in err or "same channel" in err or "21910" in err:
+            hint = (
+                "Your Twilio sender appears to be a regular SMS number (or vice versa). "
+                "For WhatsApp, the FROM number must be your approved WhatsApp Business sender — "
+                "for the Twilio sandbox use +14155238886 (without the 'whatsapp:' prefix — we add it). "
+                "Verify under Channel Setup → Twilio → 'WhatsApp From'."
+            )
+        # 21211 — invalid To
+        elif "21211" in err or "is not a valid phone number" in err:
+            hint = (
+                "Recipient phone number is not in valid E.164 format. Use the international "
+                "format with country code, e.g. +919876543210."
+            )
+        # 21408 — permission denied (account not approved for region)
+        elif "21408" in err or "permission to send" in err:
+            hint = (
+                "Your Twilio account doesn't yet have permission to send to this region. "
+                "Enable the destination country under Twilio Console → Voice/Messaging → Geo Permissions."
+            )
+        # 20003 — auth error
+        elif "20003" in err or "authenticate" in err:
+            hint = (
+                "Twilio authentication failed. Check your Account SID and Auth Token under "
+                "Channel Setup → Twilio (re-paste them — make sure no trailing spaces)."
             )
         return {**result, "hint": hint}
     return result

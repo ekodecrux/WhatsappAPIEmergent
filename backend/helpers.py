@@ -169,12 +169,36 @@ def get_twilio_client(account_sid: str | None = None, auth_token: str | None = N
 
 
 def send_whatsapp_via_twilio(account_sid: str, auth_token: str, from_addr: str, to_phone: str, body: str, media_url: str | None = None) -> dict:
-    """Send WhatsApp text (and optional media) via Twilio. to_phone in E.164 format."""
+    """Send WhatsApp text (and optional media) via Twilio. to_phone in E.164 format.
+
+    Twilio requires BOTH `from` and `to` to carry the `whatsapp:` prefix, otherwise it
+    raises HTTP 400 "Invalid From and To pair. From and To should be of the same channel".
+    We auto-prefix both sides defensively so users can save their sender as either
+    `+14155238886` or `whatsapp:+14155238886` and it will Just Work.
+    """
     try:
         c = get_twilio_client(account_sid, auth_token)
-        if not to_phone.startswith("whatsapp:"):
-            to_phone = f"whatsapp:{to_phone}"
-        kwargs: dict = {"from_": from_addr, "to": to_phone, "body": body or ""}
+
+        # Normalize FROM — strip leading "whatsapp:" if present, re-add cleanly.
+        from_clean = (from_addr or "").strip()
+        if from_clean.lower().startswith("whatsapp:"):
+            from_clean = from_clean.split(":", 1)[1].strip()
+        # Twilio sandbox sometimes uses "+1 415 523 8886" with spaces; collapse them.
+        from_clean = from_clean.replace(" ", "")
+        # Ensure "+E164" format on the bare number side
+        if from_clean and not from_clean.startswith("+"):
+            from_clean = "+" + from_clean.lstrip("0")
+        from_addr_final = f"whatsapp:{from_clean}"
+
+        # Normalize TO — same treatment.
+        to_clean = (to_phone or "").strip().replace(" ", "")
+        if to_clean.lower().startswith("whatsapp:"):
+            to_clean = to_clean.split(":", 1)[1].strip()
+        if to_clean and not to_clean.startswith("+"):
+            to_clean = "+" + to_clean.lstrip("0")
+        to_addr_final = f"whatsapp:{to_clean}"
+
+        kwargs: dict = {"from_": from_addr_final, "to": to_addr_final, "body": body or ""}
         if media_url:
             kwargs["media_url"] = [media_url]
         msg = c.messages.create(**kwargs)
