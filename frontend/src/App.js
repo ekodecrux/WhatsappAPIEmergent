@@ -18,6 +18,7 @@ import Templates from './pages/Templates';
 import Flows from './pages/Flows';
 import FlowBuilder from './pages/FlowBuilder';
 import Marketplace from './pages/Marketplace';
+import Catalog from './pages/Catalog';
 import Delivery from './pages/Delivery';
 import AdminConsole from './pages/AdminConsole';
 import Support from './pages/Support';
@@ -57,6 +58,7 @@ export default function App() {
             <Route path="flows" element={<Flows />} />
             <Route path="flows/:id" element={<FlowBuilder />} />
             <Route path="marketplace" element={<Marketplace />} />
+            <Route path="catalog" element={<Catalog />} />
             <Route path="delivery" element={<Delivery />} />
             <Route path="support" element={<Support />} />
             <Route path="wallet" element={<WalletPage />} />

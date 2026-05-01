@@ -61,9 +61,27 @@ export default function Chat() {
     if (v.startsWith('/') && v.indexOf(' ') === -1) {
       setSlashFilter(v.slice(1).toLowerCase());
       setShowSlash(true);
-    } else {
-      setShowSlash(false);
+      setGhost('');
+      return;
     }
+    setShowSlash(false);
+    // Ghost-text autocomplete: debounce 600ms, only when typing real text and no slash
+    if (ghostTimer.current) clearTimeout(ghostTimer.current);
+    if (!active?.id || v.length < 3 || v.startsWith('/')) { setGhost(''); return; }
+    ghostTimer.current = setTimeout(async () => {
+      try {
+        const { data } = await api.post('/ai-assist/reply-coach', {
+          conversation_id: active.id, draft: v,
+        });
+        setGhost((data?.completion || '').trim());
+      } catch { setGhost(''); }
+    }, 600);
+  };
+  const acceptGhost = () => {
+    if (!ghost) return;
+    setInput((cur) => cur + ghost);
+    setGhost('');
+    setTimeout(() => inputRef.current?.focus(), 30);
   };
   const filteredQR = quickReplies.filter(q =>
     !slashFilter || q.shortcut.includes(slashFilter) || q.body.toLowerCase().includes(slashFilter)
@@ -138,6 +156,7 @@ export default function Chat() {
     if (!credentialId) { toast.error('Pick a WhatsApp connection'); return; }
     const text = input.trim();
     setInput('');
+    setGhost('');
     setMessages(m => [...m, { id: 'tmp-' + Date.now(), direction: 'outbound', content: text, status: 'sending', sent_at: new Date().toISOString() }]);
     try {
       await api.post(`/conversations/${active.id}/send`, { credential_id: credentialId, to_phone: active.customer_phone, content: text });

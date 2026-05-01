@@ -4,7 +4,7 @@ import {
   LayoutDashboard, MessageSquare, Send, Users, MessagesSquare, Bot,
   FileText, Workflow, BarChart3, CreditCard, Plug, UserPlus, BookOpen, Settings as SettingsIcon, LogOut,
   Menu, X, ChevronRight, AlertTriangle, Sparkles, Store, Activity, Shield, LifeBuoy, Wallet, Banknote,
-  Search,
+  Search, Package,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import AIAssistant from './AIAssistant';
@@ -17,6 +17,7 @@ const TENANT_NAV = [
   { to: '/app/campaigns', label: 'Campaigns', icon: Send, group: 'engage' },
   { to: '/app/flows', label: 'Chatbots', icon: Workflow, group: 'engage' },
   { to: '/app/templates', label: 'Templates', icon: FileText, group: 'engage' },
+  { to: '/app/catalog', label: 'Catalog', icon: Package, group: 'engage' },
   { to: '/app/marketplace', label: 'Marketplace', icon: Store, group: 'engage' },
   // Customers
   { to: '/app/chat', label: 'Inbox', icon: MessagesSquare, group: 'customers' },

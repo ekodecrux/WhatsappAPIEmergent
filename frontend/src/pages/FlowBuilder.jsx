@@ -5,7 +5,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import api from '../lib/api';
-import { ArrowLeft, Plus, Save, Power, Send, Trash2, Settings, Play, MessageCircle, HelpCircle, GitBranch, Globe, ScanLine, X, Sparkles, ChevronRight, Wand2 } from 'lucide-react';
+import { ArrowLeft, Plus, Save, Power, Send, Trash2, Settings, Play, MessageCircle, HelpCircle, GitBranch, Globe, ScanLine, X, Sparkles, ChevronRight, Wand2, Package, CreditCard } from 'lucide-react';
 import { toast } from 'sonner';
 
 const TYPE_META = {
@@ -16,6 +16,8 @@ const TYPE_META = {
   branch: { label: 'Keyword branch', color: '#F59E0B', icon: GitBranch },
   condition: { label: 'Condition (var)', color: '#0891B2', icon: ScanLine },
   api: { label: 'API / Webhook', color: '#475569', icon: Globe },
+  catalog: { label: 'Show products', color: '#0F766E', icon: Package },
+  checkout: { label: 'Collect payment', color: '#9333EA', icon: CreditCard },
   end: { label: 'End', color: '#EF4444', icon: Power },
 };
 
@@ -66,6 +68,8 @@ const nodeTypes = {
   branch: NodeCard,
   condition: NodeCard,
   api: NodeCard,
+  catalog: NodeCard,
+  checkout: NodeCard,
   end: NodeCard,
 };
 
@@ -77,6 +81,7 @@ export default function FlowBuilder() {
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [selected, setSelected] = useState(null);
   const [creds, setCreds] = useState([]);
+  const [products, setProducts] = useState([]);
   const [saving, setSaving] = useState(false);
   const [testOpen, setTestOpen] = useState(false);
   const [testPhone, setTestPhone] = useState('+919999000001');
@@ -94,6 +99,7 @@ export default function FlowBuilder() {
     const fl = f.data;
     setFlow(fl);
     setCreds(c.data);
+    api.get('/catalog/products').then(({ data }) => setProducts(data || [])).catch(() => {});
     setNodes((fl.nodes || []).map(n => ({ id: n.id, type: n.type, position: n.position || { x: 0, y: 0 }, data: n.data || {} })));
     setEdges((fl.edges || []).map(e => ({
       id: e.id, source: e.source, target: e.target,
@@ -122,6 +128,8 @@ export default function FlowBuilder() {
       branch: { },
       condition: { variable: 'amount', operator: '>', value: '10000' },
       api: { url: 'https://your-erp.com/webhook', method: 'POST' },
+      catalog: { intro: "Here's our latest products:", product_ids: [] },
+      checkout: { product_id: '', message: 'Pay here: {{pay_url}}' },
       end: { message: 'Thanks for chatting!' },
       start: { label: 'Start' },
     }[type] || {};
@@ -455,6 +463,96 @@ export default function FlowBuilder() {
                     </div>
                     <div className="rounded-md bg-zinc-50 p-2 font-mono text-[10px] leading-snug text-zinc-600">
                       {`POST { variables, phone }`}
+                    </div>
+                  </>
+                )}
+
+                {selected.type === 'catalog' && (
+                  <>
+                    <p className="text-[10px] leading-relaxed text-zinc-500">
+                      Sends a formatted product list to the customer. Manage products in <Link to="/app/catalog" className="font-medium text-wa-dark underline">Catalog</Link>.
+                    </p>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-zinc-700">Intro message</label>
+                      <input
+                        data-testid="catalog-intro"
+                        value={selected.data?.intro || ''}
+                        onChange={(e) => updateNodeData(selected.id, { intro: e.target.value })}
+                        placeholder="Here's what we have today:"
+                        className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-zinc-700">Products to show</label>
+                      {products.length === 0 ? (
+                        <div className="rounded-md border border-dashed border-zinc-300 bg-zinc-50 p-3 text-center text-[11px] text-zinc-500">
+                          No products yet. <Link to="/app/catalog" className="font-medium text-wa-dark underline">Add products</Link> first.
+                        </div>
+                      ) : (
+                        <div className="max-h-44 space-y-1 overflow-y-auto rounded-md border border-zinc-200 bg-white p-2">
+                          {products.map(p => {
+                            const ids = selected.data?.product_ids || [];
+                            const checked = ids.includes(p.id);
+                            return (
+                              <label key={p.id} className="flex items-center gap-2 text-[11px]">
+                                <input
+                                  type="checkbox"
+                                  data-testid={`catalog-pick-${p.id}`}
+                                  checked={checked}
+                                  onChange={(e) => {
+                                    const next = e.target.checked
+                                      ? [...ids, p.id]
+                                      : ids.filter(x => x !== p.id);
+                                    updateNodeData(selected.id, { product_ids: next });
+                                  }}
+                                />
+                                <span className="flex-1 truncate">{p.name}</span>
+                                <span className="text-zinc-500">₹{Number(p.price_inr).toFixed(0)}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {selected.type === 'checkout' && (
+                  <>
+                    <p className="text-[10px] leading-relaxed text-zinc-500">
+                      Generates a Razorpay payment link for the chosen product and sends it to the customer.
+                    </p>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-zinc-700">Product</label>
+                      {products.length === 0 ? (
+                        <div className="rounded-md border border-dashed border-zinc-300 bg-zinc-50 p-3 text-center text-[11px] text-zinc-500">
+                          Add products in <Link to="/app/catalog" className="font-medium text-wa-dark underline">Catalog</Link> first.
+                        </div>
+                      ) : (
+                        <select
+                          data-testid="checkout-product"
+                          value={selected.data?.product_id || ''}
+                          onChange={(e) => updateNodeData(selected.id, { product_id: e.target.value })}
+                          className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-xs"
+                        >
+                          <option value="">— select a product —</option>
+                          {products.map(p => (
+                            <option key={p.id} value={p.id}>{p.name} (₹{Number(p.price_inr).toFixed(0)})</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-zinc-700">Message template</label>
+                      <textarea
+                        data-testid="checkout-message"
+                        value={selected.data?.message || ''}
+                        onChange={(e) => updateNodeData(selected.id, { message: e.target.value })}
+                        rows={3}
+                        placeholder="Pay here: {{pay_url}}"
+                        className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-xs"
+                      />
+                      <p className="mt-1 text-[10px] text-zinc-500">Tokens: <span className="font-mono">{`{{pay_url}}`}</span> · <span className="font-mono">{`{{product_name}}`}</span> · <span className="font-mono">{`{{price}}`}</span></p>
                     </div>
                   </>
                 )}

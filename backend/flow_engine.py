@@ -287,6 +287,86 @@ async def _step(db, flow: dict, conversation: dict, session: dict, inbound_text:
             session["status"] = "ended"
         return session
 
+    if ntype == "catalog":
+        # Send a formatted list of selected products
+        product_ids = data.get("product_ids") or []
+        if product_ids:
+            cur = db.products.find(
+                {"id": {"$in": product_ids}, "tenant_id": flow["tenant_id"]},
+                {"_id": 0},
+            )
+            prods = await cur.to_list(50)
+            if prods:
+                lines = [data.get("intro") or "Here's what we have today:"]
+                for p in prods:
+                    lines.append(f"• *{p['name']}* — ₹{p['price_inr']:.0f}")
+                    if p.get("description"):
+                        lines.append(f"   {p['description'][:120]}")
+                if data.get("save_var"):
+                    session.setdefault("variables", {})[data["save_var"]] = ", ".join(p["name"] for p in prods)
+                await _send(db, flow, conversation, "\n".join(lines))
+        nxt = _next_node(flow, node["id"])
+        session["current_node_id"] = nxt
+        if nxt:
+            session = await _step(db, flow, conversation, session, None)
+        else:
+            session["status"] = "ended"
+        return session
+
+    if ntype == "checkout":
+        # Generate a Razorpay pay-link for the configured product and send via WhatsApp
+        from helpers import create_razorpay_order
+        from datetime import datetime, timezone as _tz
+        import secrets as _secrets
+        pid = data.get("product_id")
+        product = None
+        if pid:
+            product = await db.products.find_one(
+                {"id": pid, "tenant_id": flow["tenant_id"]}, {"_id": 0},
+            )
+        if product:
+            receipt = f"flow_{_secrets.token_hex(5)}"
+            res = create_razorpay_order(
+                float(product["price_inr"]), receipt,
+                notes={"tenant_id": flow["tenant_id"], "product_id": product["id"],
+                       "customer_phone": conversation["customer_phone"], "flow_id": flow["id"]},
+            )
+            if res.get("success"):
+                order = res["order"]
+                co_id = _secrets.token_hex(8)
+                co = {
+                    "id": co_id, "tenant_id": flow["tenant_id"],
+                    "product_id": product["id"], "product_name": product["name"],
+                    "amount_inr": float(product["price_inr"]),
+                    "customer_phone": conversation["customer_phone"],
+                    "customer_name": conversation.get("customer_name"),
+                    "razorpay_order_id": order["id"],
+                    "flow_id": flow["id"], "status": "pending",
+                    "created_at": datetime.now(_tz.utc).isoformat(),
+                }
+                await db.checkouts.insert_one(co)
+                base = os.environ.get("PUBLIC_APP_URL", "https://messaging-vault.preview.emergentagent.com")
+                pay_url = f"{base}/pay/{co_id}"
+                if data.get("save_var"):
+                    session.setdefault("variables", {})[data["save_var"]] = pay_url
+                tmpl = data.get("message") or (
+                    f"Complete your order for {product['name']} (₹{product['price_inr']:.0f}): {pay_url}"
+                )
+                tmpl = tmpl.replace("{{pay_url}}", pay_url).replace("{{product_name}}", product["name"]).replace("{{price}}", f"{product['price_inr']:.0f}")
+                tmpl = _interpolate(tmpl, session.get("variables", {}))
+                await _send(db, flow, conversation, tmpl)
+            else:
+                await _send(db, flow, conversation, "Sorry, we couldn't create a payment link. Please try again later.")
+        else:
+            await _send(db, flow, conversation, "This product is no longer available.")
+        nxt = _next_node(flow, node["id"])
+        session["current_node_id"] = nxt
+        if nxt:
+            session = await _step(db, flow, conversation, session, None)
+        else:
+            session["status"] = "ended"
+        return session
+
     if ntype == "end":
         text = _interpolate(data.get("message", ""), session.get("variables", {}))
         if text:

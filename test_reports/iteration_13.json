@@ -1,0 +1,39 @@
+{
+  "summary": "Iteration 13 final-sprint E2E verification. Backend pytest 8/8 PASS in 5.7s covering catalog CRUD + pay-link, AI spam-score (spammy 98/100 'danger' + neutral 'good'), optimal-send-time, reply-coach, sandbox enable/status/disable round-trip, billing plans (3 plans with annual_inr), and annual-cycle order creation. Frontend verified end-to-end after a required `supervisorctl restart frontend` (CRA dev server had hit ENOSPC file-watcher limit so newly added Catalog nav + routes were not in the running bundle until restart): Catalog appears under Engage with data-testid='nav-catalog', /app/catalog renders existing products (Demo Mug ₹499, Premium Plan ₹999) plus a working Add-product modal (data-testid='product-save' — TEST_pw_widget saved & rendered as a card). Each card shows a 'Generate pay-link' button. /app/campaigns: opening 'New campaign' shows optimal-time-hint above message, typing the spammy text triggers debounced spam-score-widget rendering '98/100 will likely be blocked' with issues + AI rewrite. /app/chat: ghost-text autocomplete works — typing 'Sure' on a conversation triggers /api/ai-assist/reply-coach, ghost-text element renders with completion ('I'll help you with that.'), Tab key accepts it into chat-input (became 'SureI'll help you with that.'). /app/settings: data-testid='toggle-sandbox' present. /app/billing: data-testid='cycle-annual' present, click switches prices and shows 'Save ₹…' text. /app/flows/{id}: palette renders both 'Show products' and 'Collect payment' buttons; clicking Show products adds a catalog node onto the React-Flow canvas. Console: zero PAGE errors; one minor hydration warning ('<span> cannot be a child of <option>') from AppShell.jsx line ~245 (cosmetic, does not break UX).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Reply Coach Tab-accept", "issue": "Completion is concatenated to the draft without a separating space, e.g. 'Sure' + 'I\\'ll help you with that.' becomes 'SureI\\'ll help you with that.' Either trim+pad on the client or have backend always start the completion with a leading space when the draft does not end with whitespace.", "affected_selectors": ["[data-testid='ghost-text']", "[data-testid='chat-input']"]}
+    ],
+    "design_issues": [
+      {"screen": "AppShell topbar (any /app/* page)", "issues": ["React hydration warning: '<span> cannot be a child of <option>' originating at AppShell.jsx ~line 245. Minor — likely a flag/icon span inside a <select><option> inside the credential picker; replace with text or move outside <option>."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration13_features.py",
+    "/app/test_reports/pytest/iter13_results.xml"
+  ],
+  "action_items": [
+    "Fix Reply-Coach concatenation: add a leading space in /api/ai-assist/reply-coach response when payload.draft is non-empty and does not end with whitespace, or pad on the client before insertion (Chat.jsx Tab handler).",
+    "Fix hydration warning in AppShell.jsx line ~245 — a <span> is rendered inside an <option>; <option> children must be plain text. Replace the span with a string or render the icon outside the <option>.",
+    "Operational note for future iterations: CRA dev server occasionally hits ENOSPC 'System limit for number of file watchers reached' (visible in /var/log/supervisor/frontend.err.log) which silently freezes hot-reload. After every code change to /app/frontend/src that adds a NEW route or NEW nav item, run `sudo supervisorctl restart frontend` to be safe."
+  ],
+  "critical_code_review_comments": [
+    "catalog.py — checkout() hard-codes the public base URL ('https://messaging-vault.preview.emergentagent.com') for pay_url. Move to PUBLIC_APP_URL env var with a sensible fallback so a different deployment (or local) does not generate broken links.",
+    "ai_assist.py reply_coach — when the LLM call fails it returns 200 with {completion: '', error: '...'}. Consider returning 503 so the UI can distinguish 'no suggestion' from a backend outage; current behavior masks Groq downtime as a no-op.",
+    "ai_assist.py optimal_send_time — uses MongoDB $dateFromString on a string `sent_at` per request — fine at current scale but for a tenant with millions of messages this aggregation is unbounded; consider a cached precomputed `tenant_send_time_stats` collection refreshed nightly.",
+    "sandbox.py enable — idempotency threshold (>=30 conversations) means a partial seed (say 25 from a crashed run) will reseed and double-up. Use a single `tenants.sandbox_seeded_at` guard instead of a count.",
+    "AppShell.jsx — the React hydration warning ('<span> cannot be a child of <option>') is a real DOM violation that will surface as console noise on every page render; please audit any <select> templates."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration13_features.py (new — 8 pytest cases, 5.7s)"
+  ],
+  "success_rate": {"backend": "100% (8/8)", "frontend": "100% on the 7 wired flows tested (Catalog nav + page + add product, Catalog pay-link button rendered, Spam-score widget, Optimal-time hint, Reply-coach ghost-text + Tab-accept, Sandbox toggle present, Annual cycle toggle works, FlowBuilder palette + Show products node insert)"},
+  "test_credentials": "demo@test.com / demo1234 (verified)",
+  "seed_data_creation": "Created 1 product 'TEST_pw_widget' (₹299) via UI test — DELETED after run via /api/catalog/products/{id}. Sandbox enable/disable cycle seeded 50 conversations + 200 leads + 5 campaigns then cleaned up to zero (verified via /api/sandbox/status).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Reusable pytest at /app/backend/tests/test_iteration13_features.py — 8 tests covering all new iteration-13 endpoints (catalog CRUD+checkout, ai-assist spam-score+optimal-send-time+reply-coach, sandbox enable/status/disable, billing/plans + billing/orders annual). Frontend selectors confirmed: nav-catalog, new-product, product-save, generate-pay-link button text, optimal-time-hint, spam-score-widget, apply-rewrite, chat-input, ghost-text, toggle-sandbox, cycle-annual, flow-builder palette buttons 'Show products' / 'Collect payment'. CRA hot-reload is brittle due to ENOSPC — restart frontend after any nav/route change. Reply-Coach debounce ~600ms, allow ~2.5s wait for LLM. Spam-score is debounced ~800ms in widget, allow ~2s wait.",
+  "rca of the issue": "Initial Catalog nav appearing absent was a stale CRA bundle: the dev server hit Linux inotify file-watcher limit (ENOSPC) so the recently added Catalog route + nav-catalog item were not compiled into the running bundle. Resolved with `sudo supervisorctl restart frontend`. After restart all features wired correctly. Reply-Coach concatenation (no space between draft + completion) is a real UX bug — minor — see action_items."
+}
