@@ -574,9 +574,9 @@ async def twilio_diagnose(body: dict, current=Depends(get_current_user)):
     )
     if not cred:
         raise HTTPException(404, "Twilio credential not found")
-    sid = decrypt_text(cred["account_sid"])
-    tok = decrypt_text(cred["auth_token"])
-    saved_from_raw = (cred.get("from_address") or "").strip()
+    sid = decrypt_text(cred["account_sid_enc"])
+    tok = decrypt_text(cred["auth_token_enc"])
+    saved_from_raw = (cred.get("whatsapp_from") or "").strip()
     saved_from_clean = saved_from_raw.replace("whatsapp:", "").strip().replace(" ", "")
     if saved_from_clean and not saved_from_clean.startswith("+"):
         saved_from_clean = "+" + saved_from_clean.lstrip("0")

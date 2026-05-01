@@ -65,7 +65,7 @@ export default function ConnectWhatsApp() {
         provider: 'twilio',
         account_sid: creds.account_sid.trim(),
         auth_token: creds.auth_token.trim(),
-        from_address: creds.whatsapp_from.trim(),
+        whatsapp_from: creds.whatsapp_from.trim(),
       });
       setSavedCred(data);
       toast.success('Credentials saved & encrypted');
