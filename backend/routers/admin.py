@@ -94,21 +94,46 @@ async def list_tenants(
             {"id": search},
         ]
     tenants = await db.tenants.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
+    if not tenants:
+        return []
 
-    # Hydrate with user count + message count + last_login
+    tids = [t["id"] for t in tenants]
+
+    # Batch aggregations — 3 group queries instead of 3 × N point queries.
+    users_counts: dict[str, int] = {}
+    async for row in db.users.aggregate([
+        {"$match": {"tenant_id": {"$in": tids}}},
+        {"$group": {"_id": "$tenant_id", "n": {"$sum": 1}}},
+    ]):
+        users_counts[row["_id"]] = row["n"]
+
+    msg_counts: dict[str, int] = {}
+    async for row in db.messages.aggregate([
+        {"$match": {"tenant_id": {"$in": tids}, "direction": "outbound"}},
+        {"$group": {"_id": "$tenant_id", "n": {"$sum": 1}}},
+    ]):
+        msg_counts[row["_id"]] = row["n"]
+
+    # Most-recent-login user per tenant
+    last_users: dict[str, dict] = {}
+    async for row in db.users.aggregate([
+        {"$match": {"tenant_id": {"$in": tids}}},
+        {"$sort": {"last_login": -1}},
+        {"$group": {"_id": "$tenant_id", "last_login": {"$first": "$last_login"}, "email": {"$first": "$email"}}},
+    ]):
+        last_users[row["_id"]] = {"last_login": row.get("last_login"), "email": row.get("email")}
+
     out = []
     for t in tenants:
         tid = t["id"]
-        users_count = await db.users.count_documents({"tenant_id": tid})
-        messages_count = await db.messages.count_documents({"tenant_id": tid, "direction": "outbound"})
-        last_user = await db.users.find_one({"tenant_id": tid}, {"_id": 0, "last_login": 1, "email": 1}, sort=[("last_login", -1)])
+        lu = last_users.get(tid) or {}
         out.append({
             **t,
-            "users_count": users_count,
-            "messages_sent": messages_count,
+            "users_count": users_counts.get(tid, 0),
+            "messages_sent": msg_counts.get(tid, 0),
             "trial_days_left": trial_days_left(t),
-            "last_login": (last_user or {}).get("last_login"),
-            "primary_email": (last_user or {}).get("email"),
+            "last_login": lu.get("last_login"),
+            "primary_email": lu.get("email"),
             "wallet_balance_inr": float(t.get("wallet_balance_inr") or 0.0),
             "billing_mode": t.get("billing_mode") or "byoc",
         })
