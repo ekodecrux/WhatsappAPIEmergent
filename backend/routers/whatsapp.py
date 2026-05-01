@@ -106,6 +106,44 @@ async def delete_credential(cred_id: str, current=Depends(get_current_user)):
     return {"deleted": True}
 
 
+@router.get("/credentials/{cred_id}/share-links")
+async def get_share_links(cred_id: str, current=Depends(get_current_user)):
+    """Generate wa.me link + SVG QR code for a connected number — for promotion."""
+    import urllib.parse
+    c = await db.whatsapp_credentials.find_one(
+        {"id": cred_id, "tenant_id": current["tenant_id"]}, {"_id": 0},
+    )
+    if not c:
+        raise HTTPException(404, "Credential not found")
+    raw = (c.get("whatsapp_from", "") or "").lstrip("+").replace("whatsapp:", "").strip()
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    if not digits:
+        raise HTTPException(400, "This credential has no whatsapp_from number set")
+
+    default_msg = f"Hi! I'd like to know more about {(await db.tenants.find_one({'id': current['tenant_id']}, {'_id': 0, 'company_name': 1}) or {}).get('company_name', 'your business')}"
+    encoded = urllib.parse.quote(default_msg)
+
+    wa_link = f"https://wa.me/{digits}?text={encoded}"
+    short_link = f"https://wa.me/{digits}"
+
+    # Inline QR code SVG (use external service that returns SVG via redirect — keep payload tiny)
+    qr_url = f"https://api.qrserver.com/v1/create-qr-code/?data={urllib.parse.quote(short_link)}&size=300x300&format=svg&margin=0"
+
+    return {
+        "phone": "+" + digits,
+        "wa_link": wa_link,
+        "wa_link_short": short_link,
+        "qr_image_url": qr_url,
+        "default_message": default_msg,
+        "embed_snippet": (
+            f'<a href="{wa_link}" target="_blank" rel="noopener">'
+            f'<img src="https://img.shields.io/badge/Chat_on-WhatsApp-25D366?logo=whatsapp&logoColor=white" alt="Chat on WhatsApp"/>'
+            f'</a>'
+        ),
+    }
+
+
+
 async def _load_credential(tenant_id: str, cred_id: str) -> dict:
     c = await db.whatsapp_credentials.find_one({"id": cred_id, "tenant_id": tenant_id}, {"_id": 0})
     if not c:

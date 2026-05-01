@@ -5,6 +5,7 @@ import {
   Award, Check, Copy, ChevronDown, ChevronRight as ChevronRightIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import ShareLinksPanel from '../components/ShareLinksPanel';
 
 const PROVIDERS = [
   { id: 'twilio_sandbox', label: 'Twilio Sandbox', icon: Beaker, hint: 'Instant — uses platform sandbox. Great for testing.' },
@@ -210,6 +211,18 @@ export default function WhatsAppSetup() {
           </div>
         ))}
       </div>
+
+      {/* Share links — wa.me link + QR code per connected number */}
+      {items.length > 0 && (
+        <div className="space-y-3">
+          {items.map(c => (
+            <ShareLinksPanel key={c.id} credentialId={c.id} credentialName={c.name} />
+          ))}
+        </div>
+      )}
+
+      {/* Meta credentials inline helper */}
+      <MetaCredentialsHelper />
 
       {/* Sandbox simulator */}
       {items.length > 0 && (
@@ -482,6 +495,95 @@ function GreenTickWizard() {
               className="m-3 inline-flex items-center gap-1.5 rounded-md border border-zinc-300 bg-white px-2.5 py-1 text-xs hover:bg-zinc-50"
             ><Copy className="h-3 w-3" /> Copy template</button>
           </details>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+function MetaCredentialsHelper() {
+  const [open, setOpen] = useState(false);
+  const ITEMS = [
+    {
+      label: 'Permanent access token',
+      where: 'Meta Business Settings → System Users → (create or pick one) → Generate New Token → select your WhatsApp app → check whatsapp_business_messaging + whatsapp_business_management → Generate',
+      url: 'https://business.facebook.com/settings/system-users',
+      tip: 'Use System User token (never expires) — not the temporary 24h token from the API explorer.',
+    },
+    {
+      label: 'Phone number ID',
+      where: 'Meta WhatsApp Manager → Account Tools → Phone numbers → click your number → "Phone number ID" displayed at top.',
+      url: 'https://business.facebook.com/wa/manage/phone-numbers',
+      tip: '15-digit numeric ID like 109876543210987.',
+    },
+    {
+      label: 'WhatsApp Business Account ID (WABA ID)',
+      where: 'Meta WhatsApp Manager → Account Tools → Account info → "WhatsApp Business Account ID".',
+      url: 'https://business.facebook.com/wa/manage/home/',
+      tip: 'Required for managed templates & message reports.',
+    },
+    {
+      label: 'App secret',
+      where: 'developers.facebook.com → Your App → Settings → Basic → "App Secret" (click Show).',
+      url: 'https://developers.facebook.com/apps',
+      tip: 'We use this to validate the HMAC signature on every inbound webhook from Meta.',
+    },
+    {
+      label: 'Webhook callback URL',
+      where: 'Copy this URL into developers.facebook.com → Your App → WhatsApp → Configuration → Callback URL',
+      url: null,
+      tip: `Set verify token to anything, then paste here. Subscribe to: messages, message_status, message_template_status.`,
+      copy: `${window.location.origin}/api/whatsapp/webhook/meta`,
+    },
+  ];
+  return (
+    <div className="rounded-md border border-purple-200 bg-gradient-to-br from-purple-50 to-white">
+      <button
+        data-testid="meta-helper-toggle"
+        onClick={() => setOpen(o => !o)}
+        className="flex w-full items-center justify-between p-4 text-left"
+      >
+        <div className="flex items-center gap-3">
+          <div className="grid h-8 w-8 place-items-center rounded-full bg-purple-700 text-white">
+            <Info className="h-3.5 w-3.5" />
+          </div>
+          <div>
+            <div className="text-sm font-semibold text-purple-950">Where to find Meta credentials</div>
+            <div className="text-xs text-purple-800">Direct links to each value in your Meta dashboard — open in a new tab</div>
+          </div>
+        </div>
+        {open ? <ChevronDown className="h-4 w-4 text-purple-700" /> : <ChevronRightIcon className="h-4 w-4 text-purple-700" />}
+      </button>
+      {open && (
+        <div className="space-y-3 border-t border-purple-200 p-4">
+          {ITEMS.map((it, i) => (
+            <div key={i} className="rounded-md border border-zinc-200 bg-white p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-sm font-semibold text-zinc-900">{i + 1}. {it.label}</div>
+                {it.url && (
+                  <a href={it.url} target="_blank" rel="noreferrer"
+                     className="inline-flex items-center gap-1 rounded-md border border-purple-300 bg-purple-50 px-2 py-0.5 text-[11px] font-medium text-purple-800 hover:bg-purple-100">
+                    Open in Meta <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
+              </div>
+              <p className="mt-1 text-xs text-zinc-700">{it.where}</p>
+              {it.tip && <p className="mt-1 text-[11px] text-zinc-500">💡 {it.tip}</p>}
+              {it.copy && (
+                <div className="mt-2 flex items-center gap-1">
+                  <input value={it.copy} readOnly className="flex-1 rounded-md border border-zinc-300 bg-zinc-50 px-2 py-1.5 font-mono text-[11px]" />
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(it.copy); toast.success('Copied'); }}
+                    className="rounded-md border border-zinc-300 bg-white px-2 py-1.5 hover:bg-zinc-50"
+                  ><Copy className="h-3 w-3" /></button>
+                </div>
+              )}
+            </div>
+          ))}
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-900">
+            <strong>Pro tip:</strong> never paste a temporary access token (expires in 24h). Always use a System User token from Business Settings. We&apos;ll auto-validate it before saving.
+          </div>
         </div>
       )}
     </div>

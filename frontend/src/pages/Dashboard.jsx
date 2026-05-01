@@ -6,6 +6,7 @@ import {
   Wallet, Plug, Workflow, MessageSquare, LifeBuoy, ArrowUpRight, Plus, Inbox,
   CheckCircle2, Clock, Zap, Megaphone, AlertTriangle,
 } from 'lucide-react';
+import OnboardingChecklist from '../components/OnboardingChecklist';
 
 const ICONS = { channel: MessageSquare, wallet: Wallet, inbox: Inbox, alert: AlertTriangle, ticket: LifeBuoy, flow: Workflow };
 const LEVEL_STYLE = {
@@ -87,6 +88,9 @@ export default function Dashboard() {
           </Link>
         </div>
       </div>
+
+      {/* Onboarding checklist (auto-hides at 100%) */}
+      <OnboardingChecklist />
 
       {/* Attention strip */}
       {summary?.attention?.length > 0 && (

@@ -137,6 +137,7 @@ from routers import assistant as r_assistant  # noqa: E402
 from routers import wallet as r_wallet  # noqa: E402
 from routers import admin_analytics as r_admin_analytics  # noqa: E402
 from routers import quick_replies as r_quick_replies  # noqa: E402
+from routers import onboarding as r_onboarding  # noqa: E402
 
 api_router.include_router(r_auth.router)
 api_router.include_router(r_otp.router)
@@ -155,6 +156,7 @@ api_router.include_router(r_assistant.router)
 api_router.include_router(r_wallet.router)
 api_router.include_router(r_admin_analytics.router)
 api_router.include_router(r_quick_replies.router)
+api_router.include_router(r_onboarding.router)
 
 app.include_router(api_router)
 
